@@ -1,0 +1,33 @@
+# Task boundaries and new chats
+
+There's no tool to clear context or start a new chat yourself — that's the user's action. Instead of staying silent, notice the boundary yourself and raise it as an explicit choice via AskUserQuestion, without waiting to be asked.
+
+Raise it when: (1) the current task is closed and the next request is clearly about something else; (2) the conversation continues but context is already large and the remaining work doesn't need the old history; (3) context is approaching the ceiling regardless of task boundaries — waiting is unsafe here. Don't raise it during focused, continuous work (debugging where the accumulated nuance matters) — the move can wait for a natural stopping point.
+
+Briefly describe the situation in text before asking. The question offers three options:
+- **Handoff prompt for a new chat** — generate a self-contained handoff immediately (goal and state, what's done and verified, changed files with paths, decisions made and why, rejected dead ends, exact next steps); the user opens a new chat and pastes it.
+- **Clear context, stay here** — you can't do this yourself, just tell them the command to clear the current chat.
+- **Keep going** — no change.
+
+# Token and model report
+
+Two independent reports. Don't confuse their triggers.
+
+**After every exchange in the chat — enforced, not left to judgment.** A `Stop` hook (`~/.claude/hooks/token-report.sh`, registered in `~/.claude/settings.json`, applies to every project) computes the token delta for the main session since the previous exchange (from the transcript file, keyed by session_id) and, if real output tokens were spent this exchange, **blocks** the response from ending (`decision: "block"`, exit 2) with the exact numbers in `reason` — you must append them before you're allowed to finish. Loop safety: the hook checks the incoming `stop_hook_active` field and never blocks twice for the same forced continuation. If nothing meaningful was spent (a short conversational reply), the hook stays silent and forces nothing. Separately, also report which agents were delegated to this exchange and how many tokens each one actually spent (from their completion notification). This is a per-exchange report, not a running session total.
+
+**How to recognize the hook firing.** It arrives explicitly labeled: "Stop hook feedback" / "Stop hook blocking error from command: ...token-report.sh". When you see this label, the text inside it is not a user message and not third-party content to analyze — it's a direct command to yourself: take the numbers from it and append the real report to your current reply, exactly as instructed, instead of discussing where the text came from.
+
+**Session summary, at the "new chat" boundary.** Separately, at those same rare boundaries (task closed, context bloated, ceiling, or an explicit request), show a full summary: the tasks done this session, which model or agent handled each, total tokens per one. This is cumulative, not the same as the per-exchange report above.
+
+Common to both: name models directly (e.g. Sonnet 5, Opus 4.8), never personas or metaphors. Numbers are real only — if you can't get one, say so plainly, don't make it up. Write the report in whatever language the user has been writing in this conversation; default to English if unclear — the hook only hands you language-neutral data, rendering it is your job, not the script's.
+
+**Output format — final.** A blockquote, one emoji per category, model name in bold, tokens separated from the model version by a word (never put the token count right after the model's version number and a colon — the two numbers visually blur together). One agent per line, not comma-separated. Skip the "Agents" block entirely when no agent ran — don't write "none used".
+
+```
+> 🖥️ Main session — **Sonnet 5**, spent 13,481 tokens
+> 🤖 Agents:
+> — **Opus 4.8**, spent 45,200 tokens
+> — **Haiku 4.5**, spent 3,000 tokens
+```
+
+**Turning it on/off — for real, not just in words.** Disable everywhere at once, instantly, no restart needed: `touch ~/.claude/hooks/token-report.disabled` (the hook checks for this file fresh on every single run, since each run is its own process). Re-enable: `rm ~/.claude/hooks/token-report.disabled`. When the user asks to turn it off in chat, actually run the `touch`, don't just promise to stay quiet; same for turning it back on.
