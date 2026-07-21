@@ -1,15 +1,10 @@
 <svg width="680" height="200" viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" role="img">
   <title>Bullpen</title>
-  <desc>Four bars of increasing height, colored from grass green to clay brown, representing the cheap, dev, hard, and super model tiers, next to the Bullpen wordmark.</desc>
-  <style>
-    .word { fill: #3B2A1E; }
-    @media (prefers-color-scheme: dark) {
-      .word { fill: #F1E9DD; }
-    }
-  </style>
+  <desc>Four bars of increasing height, colored from grass green to clay brown, representing the cheap, dev, hard, and super model tiers, next to the Bullpen wordmark on a dark background.</desc>
+  <rect x="0" y="0" width="680" height="200" rx="16" fill="#2B1F16"/>
   <rect x="40" y="124" width="36" height="44" rx="6" fill="#9BC46B"/>
   <rect x="92" y="98" width="36" height="70" rx="6" fill="#5F9A4B"/>
   <rect x="144" y="70" width="36" height="98" rx="6" fill="#C67C3E"/>
   <rect x="196" y="38" width="36" height="130" rx="6" fill="#8C4A2B"/>
-  <text x="270" y="132" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700" class="word">Bullpen</text>
+  <text x="270" y="132" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" fill="#FFFFFF">Bullpen</text>
 </svg>
