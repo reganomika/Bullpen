@@ -12,7 +12,7 @@ Open an issue with: what you expected, what actually happened, and the exact out
 
 ## Changing `route-gate.sh`
 
-It's a short, dependency-light shell script (only `jq`) by design, since it runs on every agent spawn in every project once installed. Keep new logic inside the existing fail-open pattern: on any unexpected input, exit 0 rather than block a real workflow. Run `shellcheck hooks/route-gate.sh` before opening a PR, CI runs it too.
+It's a short, dependency-light shell script (only `jq`) by design, since it runs on every agent spawn in every project once installed. Keep new logic inside the existing fail-open pattern: on any unexpected input, exit 0 rather than block a real workflow. Before opening a PR: `shellcheck hooks/route-gate.sh` and `bats tests/`, CI runs both. Add a test case in `tests/route-gate.bats` for any new decision branch, not just a manual check.
 
 ## Adding a tier or renaming one
 

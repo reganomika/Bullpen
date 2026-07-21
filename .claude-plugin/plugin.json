@@ -1,5 +1,6 @@
 {
   "name": "bullpen",
+  "version": "1.1.0",
   "description": "Cost-aware model routing for Claude Code: per-call model selection across cheap/dev/hard/super subagents, enforced by a hook that gates every agent spawn on a real model choice.",
   "author": {
     "name": "reganomika",

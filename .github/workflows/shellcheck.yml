@@ -1,14 +1,16 @@
-name: Shellcheck
+name: CI
 
 on:
   push:
     branches: [main]
     paths:
       - "hooks/**.sh"
+      - "tests/**"
       - ".github/workflows/shellcheck.yml"
   pull_request:
     paths:
       - "hooks/**.sh"
+      - "tests/**"
       - ".github/workflows/shellcheck.yml"
 
 jobs:
@@ -20,3 +22,10 @@ jobs:
         with:
           scandir: "./hooks"
           severity: warning
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bats-core/bats-action@3.0.0
+      - run: bats tests/

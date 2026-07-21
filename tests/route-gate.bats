@@ -1,0 +1,140 @@
+#!/usr/bin/env bats
+# Logic tests for hooks/route-gate.sh: shellcheck (in CI) catches syntax and
+# style, this catches routing regressions. Run: bats tests/
+#
+# Each test gets its own $HOME so route-gate.log and the .disabled flag never
+# leak between tests or touch the real ~/.claude.
+
+HOOK="$BATS_TEST_DIRNAME/../hooks/route-gate.sh"
+
+setup() {
+  export HOME="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$HOME/.claude/hooks/state"
+}
+
+run_hook() {
+  printf '%s' "$1" | "$HOOK"
+}
+
+last_decision() {
+  tail -n 1 "$HOME/.claude/hooks/state/route-gate.log" | cut -f5
+}
+
+@test "cheap tier passes silently" {
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-tier" ]
+}
+
+@test "dev and hard tiers also pass silently" {
+  run run_hook '{"tool_input":{"subagent_type":"dev"},"session_id":"s1"}'
+  [ "$(last_decision)" = "allow-tier" ]
+  run run_hook '{"tool_input":{"subagent_type":"hard"},"session_id":"s1"}'
+  [ "$(last_decision)" = "allow-tier" ]
+}
+
+@test "super raises an ask decision naming itself" {
+  run run_hook '{"tool_input":{"subagent_type":"super"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null
+  echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | test("super")' >/dev/null
+  [ "$(last_decision)" = "ask-super" ]
+}
+
+@test "Explore with no model is rewritten to haiku" {
+  run run_hook '{"tool_input":{"subagent_type":"Explore"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "allow"' >/dev/null
+  echo "$output" | jq -e '.hookSpecificOutput.updatedInput.model == "haiku"' >/dev/null
+  [ "$(last_decision)" = "rewrite-haiku" ]
+}
+
+@test "Explore with an explicit model passes through untouched" {
+  run run_hook '{"tool_input":{"subagent_type":"Explore","model":"sonnet"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-explicit" ]
+}
+
+@test "general-purpose with no model is denied" {
+  run run_hook '{"tool_input":{"subagent_type":"general-purpose"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+  [ "$(last_decision)" = "deny-no-model" ]
+}
+
+@test "general-purpose with an explicit model passes through untouched" {
+  run run_hook '{"tool_input":{"subagent_type":"general-purpose","model":"opus"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-explicit" ]
+}
+
+@test "unknown agent type fails open" {
+  run run_hook '{"tool_input":{"subagent_type":"Plan"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-other" ]
+}
+
+@test "bypassPermissions mode only observes, never blocks" {
+  run run_hook '{"tool_input":{"subagent_type":"general-purpose"},"session_id":"s1","permission_mode":"bypassPermissions"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-bypass" ]
+}
+
+@test "calls from inside a subagent are never re-gated" {
+  run run_hook '{"tool_input":{"subagent_type":"general-purpose"},"session_id":"s1","agent_id":"sub1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$HOME/.claude/hooks/state/route-gate.log" ]
+}
+
+@test "missing agent type fails open" {
+  run run_hook '{"tool_input":{},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$HOME/.claude/hooks/state/route-gate.log" ]
+}
+
+@test "disabled flag file suppresses the hook entirely" {
+  touch "$HOME/.claude/hooks/route-gate.disabled"
+  run run_hook '{"tool_input":{"subagent_type":"super"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$HOME/.claude/hooks/state/route-gate.log" ]
+}
+
+@test "ROUTE_GATE_ASK_AGENT renames which agent gets the confirmation dialog" {
+  export ROUTE_GATE_ASK_AGENT="premium"
+  run run_hook '{"tool_input":{"subagent_type":"premium"},"session_id":"s1"}'
+  echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "ask"' >/dev/null
+  [ "$(last_decision)" = "ask-super" ]
+  unset ROUTE_GATE_ASK_AGENT
+}
+
+@test "renaming the ask agent stops the old default from asking" {
+  export ROUTE_GATE_ASK_AGENT="premium"
+  run run_hook '{"tool_input":{"subagent_type":"super"},"session_id":"s1"}'
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-other" ]
+  unset ROUTE_GATE_ASK_AGENT
+}
+
+@test "ROUTE_GATE_TIER_AGENTS accepts a custom comma-separated list" {
+  export ROUTE_GATE_TIER_AGENTS="cheap,dev,hard,research"
+  run run_hook '{"tool_input":{"subagent_type":"research"},"session_id":"s1"}'
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-tier" ]
+  unset ROUTE_GATE_TIER_AGENTS
+}
+
+@test "ROUTE_GATE_AUTOROUTE_MODEL changes the rewrite target" {
+  export ROUTE_GATE_AUTOROUTE_MODEL="haiku-fast"
+  run run_hook '{"tool_input":{"subagent_type":"Explore"},"session_id":"s1"}'
+  echo "$output" | jq -e '.hookSpecificOutput.updatedInput.model == "haiku-fast"' >/dev/null
+  [ "$(last_decision)" = "rewrite-haiku-fast" ]
+  unset ROUTE_GATE_AUTOROUTE_MODEL
+}
