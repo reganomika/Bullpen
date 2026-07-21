@@ -55,8 +55,13 @@ else
     # Can't record that we warned: fail open rather than block every future
     # spawn forever on a read-only $HOME or a full disk. A missed warning
     # this once beats an unkillable block loop, that would be the opposite
-    # of this whole script's fail-open philosophy.
-    touch "$JQ_WARNED" 2>/dev/null || exit 0
+    # of this whole script's fail-open philosophy. Check the postcondition,
+    # not touch's exit code: touch on a path already occupied by a directory
+    # succeeds (it just updates the directory's mtime) while [ ! -f ] stays
+    # true forever, which would silently reproduce the exact infinite-block
+    # loop this whole check exists to prevent.
+    touch "$JQ_WARNED" 2>/dev/null
+    [ -f "$JQ_WARNED" ] || exit 0
     # PreToolUse hooks don't use the top-level decision field, that's for
     # UserPromptSubmit/PostToolUse/Stop/SubagentStop/PreCompact; PreToolUse
     # uses hookSpecificOutput.permissionDecision instead, and jq (unavailable
@@ -97,6 +102,15 @@ DENY_AGENT="${ROUTE_GATE_DENY_AGENT:-general-purpose}"
 SUBAGENT_MODEL_OVERRIDE="${CLAUDE_CODE_SUBAGENT_MODEL:-}"
 [ "$SUBAGENT_MODEL_OVERRIDE" = "inherit" ] && SUBAGENT_MODEL_OVERRIDE=""
 
+# Same class of silent override as CLAUDE_CODE_SUBAGENT_MODEL, for effort
+# instead of model: this env var outranks every tier's pinned `effort:`
+# frontmatter too ("the environment variable takes precedence over all
+# other methods... frontmatter effort... override[s] the session level but
+# not the environment variable" per Claude Code's own docs). "auto" resets
+# to the model default, same no-op meaning as "inherit" above.
+EFFORT_OVERRIDE="${CLAUDE_CODE_EFFORT_LEVEL:-}"
+[ "$EFFORT_OVERRIDE" = "auto" ] && EFFORT_OVERRIDE=""
+
 # True if $1 appears as a whole entry in the comma-separated list $2.
 in_list() {
   case ",$2," in
@@ -120,6 +134,9 @@ log_line() { # $1 = decision
   if [ -n "$SUBAGENT_MODEL_OVERRIDE" ]; then
     LOGGED_MODEL="${SUBAGENT_MODEL_OVERRIDE} (env override)"
   fi
+  if [ -n "$EFFORT_OVERRIDE" ]; then
+    LOGGED_MODEL="${LOGGED_MODEL}, effort=${EFFORT_OVERRIDE} (env override)"
+  fi
   printf '%s\t%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" \
     "${SESSION_ID:-unknown}" "$AGENT_TYPE" "$LOGGED_MODEL" "$1" >> "$LOG" 2>/dev/null
 }
@@ -132,10 +149,14 @@ if [ "$PERM_MODE" = "bypassPermissions" ]; then
 fi
 
 if in_list "$AGENT_TYPE" "$TIER_AGENTS"; then
-  # Choosing a tier agent IS the conscious model choice, frontmatter pins it,
-  # UNLESS an env override is silently substituting a different model.
-  if [ -n "$SUBAGENT_MODEL_OVERRIDE" ]; then
+  # Choosing a tier agent IS the conscious model+effort choice, frontmatter
+  # pins both, UNLESS an env override is silently substituting one or both.
+  if [ -n "$SUBAGENT_MODEL_OVERRIDE" ] && [ -n "$EFFORT_OVERRIDE" ]; then
+    log_line "allow-tier-model-and-effort-overridden"
+  elif [ -n "$SUBAGENT_MODEL_OVERRIDE" ]; then
     log_line "allow-tier-model-overridden"
+  elif [ -n "$EFFORT_OVERRIDE" ]; then
+    log_line "allow-tier-effort-overridden"
   else
     log_line "allow-tier"
   fi

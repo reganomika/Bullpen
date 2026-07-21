@@ -155,6 +155,38 @@ last_decision() {
   unset CLAUDE_CODE_SUBAGENT_MODEL
 }
 
+@test "CLAUDE_CODE_EFFORT_LEVEL flags tier agents as overridden, not a plain allow" {
+  export CLAUDE_CODE_EFFORT_LEVEL="low"
+  run run_hook '{"tool_input":{"subagent_type":"hard"},"session_id":"s1"}'
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-tier-effort-overridden" ]
+  unset CLAUDE_CODE_EFFORT_LEVEL
+}
+
+@test "CLAUDE_CODE_EFFORT_LEVEL is logged in the model column" {
+  export CLAUDE_CODE_EFFORT_LEVEL="low"
+  run run_hook '{"tool_input":{"subagent_type":"hard"},"session_id":"s1"}'
+  logged_model="$(tail -n 1 "$HOME/.claude/hooks/state/route-gate.log" | cut -f4)"
+  [ "$logged_model" = "none, effort=low (env override)" ]
+  unset CLAUDE_CODE_EFFORT_LEVEL
+}
+
+@test "CLAUDE_CODE_EFFORT_LEVEL set to auto is treated as unset" {
+  export CLAUDE_CODE_EFFORT_LEVEL="auto"
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$(last_decision)" = "allow-tier" ]
+  unset CLAUDE_CODE_EFFORT_LEVEL
+}
+
+@test "model and effort overrides together get their own combined decision" {
+  export CLAUDE_CODE_SUBAGENT_MODEL="opus"
+  export CLAUDE_CODE_EFFORT_LEVEL="low"
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$(last_decision)" = "allow-tier-model-and-effort-overridden" ]
+  unset CLAUDE_CODE_SUBAGENT_MODEL
+  unset CLAUDE_CODE_EFFORT_LEVEL
+}
+
 @test "CLAUDE_CODE_SUBAGENT_MODEL set to inherit is treated as unset" {
   export CLAUDE_CODE_SUBAGENT_MODEL="inherit"
   run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
@@ -200,14 +232,19 @@ run_hook_no_jq() {
   [ "$status" -eq 2 ]
 }
 
-@test "a touch failure on the marker fails open instead of blocking forever" {
-  mkdir -p "$HOME/.claude/hooks/state"
-  touch "$HOME/.claude/hooks/route-gate.jq-missing-warned-placeholder"
-  # Make the state dir read-only so touch on the marker fails; the hook must
-  # not turn that into an unkillable block loop.
-  chmod 555 "$HOME/.claude/hooks/state"
+@test "a marker path that can't become a real file fails open instead of blocking forever" {
+  # A directory at the marker path is the cleanest reproduction: touch on it
+  # succeeds (updates the directory's mtime, exit 0) while checking touch's
+  # exit code alone would miss that [ -f "$JQ_WARNED" ] is still false,
+  # which would silently reproduce the infinite-block loop this test guards
+  # against. Also root-independent, unlike chmod: root bypasses permission
+  # bits entirely, so a read-only-directory version of this test passes
+  # under a normal user and silently no-ops when run as root (containers,
+  # some CI images), which is not a real pass.
+  mkdir -p "$HOME/.claude/hooks/state/route-gate.jq-missing-warned"
   run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
-  chmod 755 "$HOME/.claude/hooks/state"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
 }

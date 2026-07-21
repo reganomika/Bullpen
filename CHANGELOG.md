@@ -2,6 +2,19 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-22
+
+A fourth pass from the same reviewer: one real bug found by direct reproduction (not just doc review this time), and two new findings from the same `model-config` docs already in use.
+
+### Fixed
+- **The 1.3.1 touch-failure fix checked the wrong thing.** `touch "$JQ_WARNED" 2>/dev/null || exit 0` checks `touch`'s exit code, not whether a real file exists afterward. Reproduced directly: occupy the marker path with a directory, and `touch` on an existing directory succeeds (just updates its mtime, exit 0), while `[ ! -f "$JQ_WARNED" ]` stays true forever since a directory isn't a regular file, exit 2 on every subsequent spawn, forever, the exact infinite-block loop that fix was supposed to prevent. Now checks the postcondition (`[ -f "$JQ_WARNED" ] || exit 0`) instead of the command's exit status.
+- The test covering this used `chmod 555` on the state directory, which does nothing when the test suite runs as root (containers, some CI/devcontainer images): root bypasses permission bits, so the intended failure never happens and the test passes for the wrong reason. Replaced with the directory-occupation reproduction above, which fails the same way regardless of who's running it. Also dropped a dead line the old test left behind (a placeholder file written to the wrong directory that nothing read).
+
+### Added
+- `route-gate.sh` now also detects `CLAUDE_CODE_EFFORT_LEVEL`, the same class of silent override as `CLAUDE_CODE_SUBAGENT_MODEL` but for `effort`: Claude Code's own docs confirm the environment variable outranks frontmatter `effort` the same way it outranks frontmatter `model`. Tier agents now log `allow-tier-effort-overridden`, `allow-tier-model-overridden`, or `allow-tier-model-and-effort-overridden` depending on which override(s) are active, with the actual overriding value(s) recorded in the log instead of the silently-ignored frontmatter pin.
+- FAQ: organization-level effort caps (Claude Enterprise) can silently clamp a tier's effort with zero signal anywhere, not a warning, not a log entry, because the clamp applies silently specifically in background agents, and subagents run in the background by default since v2.1.198. `route-gate.sh` has no local signal to detect this at all, unlike the two environment variables above, so this is documentation only, there's nothing to check.
+- 4 new test cases for `CLAUDE_CODE_EFFORT_LEVEL` detection, `auto`, and the combined model+effort override case (27 total).
+
 ## [1.3.1] - 2026-07-22
 
 A third pass from the same reviewer, this time catching a real bug in 1.3.0's own fix. Verified against `code.claude.com/docs/en/hooks` and the provider-alias table in `model-config` before acting, same discipline as the last two rounds.
