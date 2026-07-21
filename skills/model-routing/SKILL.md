@@ -1,62 +1,80 @@
 ---
 name: model-routing
-description: Select optimal cost-effective model and effort, dispatch work to subagents cheap/dev/hard/super. Use at the start of any task (code, content, docs, file processing, design ports, release and browser operations), before any delegation, and for questions about model choice, effort level, or token spend.
+description: Route every Agent/Task call, including the built-in Explore and general-purpose agents, choose the per-call model parameter (haiku/sonnet/opus/fable), and dispatch work to the cheap/dev/hard/super subagents. Use before the first agent spawn in a task, when choosing between inline work and delegation, and for questions about model choice, effort level, or token spend.
 metadata:
-  trigger: Start of any task; any delegation; model or effort choice; questions about token spend
+  trigger: First agent spawn in a task; any Agent/Task call; inline-vs-delegate choice; questions about model, effort, token spend
 ---
 
 # Model routing and effort
 
-Explicit user instruction (specific model, specific agent, no-delegation rule) takes precedence over all rules below. These rules apply only where the user has not specified a choice.
+## Precedence
 
-Goal: same quality for fewer tokens. Take the cheapest tier that holds quality, escalate only when the task requires it. Task difficulty picks the tier, stakes pick strictness: high stakes or deadline (demo, release, rollback) do not raise model tier, but argue against delegation or dropping below dev with mandatory result verification, because an autonomous agent cannot ask for clarification.
+Explicit user instruction (a specific model, a specific agent, a no-delegation rule) beats every rule below. The kernel in CLAUDE.md is the compressed copy of this skill for turns where the skill is not loaded. On divergence, the more detailed wording here wins, and the divergence gets fixed by editing both files.
 
-## Tiers
+## Tiers and the session default
 
-Four tiers from cheapest to most expensive model: `cheap` (fastest and cheapest), `dev` (balanced), `hard` (powerful), `super` (most powerful and most expensive available). Keep current model names and pricing here for your Claude Code setup, they change over time; check Anthropic's current pricing. `cheap` has a smaller context window than other tiers: do not send it wide repository searches, multi-file read tasks, or large code chunks where exact file paths are not known in advance.
+Four tiers from cheapest to most expensive model: `cheap` (cheapest), `dev` (balanced, same class as the main session), `hard` (powerful), `super` (frontier, the most expensive available). Keep the relative ordering as the load-bearing logic; check Anthropic's current pricing before trusting any specific numbers. `cheap` and haiku spawns have a smaller context window (200K vs 1M for the rest). The main-session default is the balanced tier at high effort, set once via `/model`; escalation goes through agents, not through switching the session model.
 
-On effort for subagents: there is no actual effort parameter for named agents, only model control. Desired effort is simulated by prompts in the agent (cheap answers briefly, super deliberates exhaustively); this is approximation, not fine-grained model-session tuning. Multi-agent orchestration, if available in your Claude Code version, is disabled by default and is not the standard path; do not confuse "call super" with enabling full orchestration.
+Subagents have no real effort parameter; the desired depth is simulated by prompt instructions (cheap answers briefly, super deliberates exhaustively).
 
-## Default main session
+## The iron rule: a model on every spawn
 
-Single recommendation for all projects: balanced model (e.g. Sonnet class), high effort. Escalation goes through agent delegation, not through constant model switching.
+Every Agent/Task call has a model parameter: haiku, sonnet, opus, fable, inherit. The built-in Explore and general-purpose agents silently inherit the main session's model without it, which means they cost as much as dev. That is a routing miss, not a neutral default. Write inherit only deliberately, and name the reason in one line. The named agents cheap/dev/hard/super pin their model in frontmatter; call them by name with no parameter.
 
-## Delegation fitness (check before choosing tier)
+If the route-gate hook is installed (PreToolUse on Agent/Task, see README): Explore without a model is auto-routed to haiku; general-purpose without a model is denied until a model is named; a super spawn raises a native confirmation dialog. The hook's messages are routing checkpoints, not errors. Do what they ask and re-issue the call. Every decision is logged to ~/.claude/hooks/state/route-gate.log; off switch: `touch ~/.claude/hooks/route-gate.disabled`.
 
-Subagets are autonomous: they do not see the conversation and cannot ask clarifying questions. Delegate only a piece that is fully specified (paths, completion criterion, decisions made) and will not need clarification mid-task.
+## Route table (obligations, not permissions)
 
-Never delegate to any tier:
-- tasks whose meaning lives in conversation context;
-- interactive work with mid-task confirmations (browser automation, form submission, publishing, purchases);
-- secrets and release procedures (credentials, signing, notarization, app store submission, deployment): steps depend on external answers and account data, decisions needed mid-task;
-- tasks with user iteration and high cost of misinterpretation;
-- destructive git operations (rollbacks, reset, force push) and file-rewriting syncs: main session only; cheap works only for non-destructive (status, log, diff, commit formatting from ready diff);
-- personal legal, tax, and medical documents: main session only.
+- Search and recon: "where is X defined", grep sweeps, hash-diffs, file-list gathering, single-field lookups: Explore or general-purpose with model: haiku. Sonnet for recon only when synthesis across several subsystems is needed, and that need is named in the spawn prompt.
+- Fully specified mechanics: bulk renames and word-form replacements, repository and .gitignore cleanups, deleting files strictly by explicitly named paths, boilerplate, uniform markdown and doc edits, translations against a ready glossary, long templated output, commit formatting from a ready diff: cheap. Batch same-shaped small items into one spawn as a list.
+- Self-contained implementation: features, scoped refactors, localizations, UI edits from an approved decision, build and run checks, debugging and tests, code questions that need conclusions rather than raw findings: dev. This is the default executor for code. The gain is not price (same model), it is context isolation and parallelism: the main session stays light and lives longer without a handoff.
+- Known-hard work: straight to hard, no prior failures required, on any of: adversarial reviews of correctness or security; races, concurrency, unstable reproduction; a public-API or data-schema migration; staged sync verification with hash-diff and pre-sync checks (the overwrite act itself stays in the main session); a coupled change across ~10+ files. The reactive entry also applies: two attempts in the main session or on dev without a confirmed result.
+- super: confirmed hard-tier failure; known multi-hour unsplittable autonomous work; maximum cost of error (critical data migrations, payment and subscription flows). No separate chat-approval ceremony: the hook raises the confirmation dialog, and that is the budget approval. High stakes raise the strictness of result verification, not the tier.
+- On any escalation, pass everything the lower tier learned upward: diagnosis, repro steps, affected files, tested and rejected hypotheses. Otherwise the expensive model re-pays for finished reconnaissance.
 
-Resolve remaining edge cases in main session or clarify with user before spawn.
+## Inline is the exception, with a named reason
 
-## Defaults by work type (who to call)
+A subagent is autonomous: it cannot see the conversation or ask questions. That is solved by prompt completeness, not by refusing to delegate. Work in the main session only when one of these applies:
+- (a) the task is on the never-delegate list below;
+- (b) the next step depends on the owner's reply within this same exchange: screenshot-approval iterations, design-tool prompts, questions about the dialog itself. The mere fact that a task grew out of the conversation does not count;
+- (c) an edit up to ~20 lines in an exactly known place, where a spawn prompt carrying the context would be longer than the edit itself;
+- (d) the user explicitly asked for it to be done in the main session.
 
-- Mechanics (formatting, renaming, boilerplate, bulk identical edits to markdown and docs, file copying, text extraction from PDF, targeted search by pre-named paths): `cheap`. Before choosing cheap, estimate read volume; if it does not fit in its context window with headroom, cheap is not viable.
-- Writing and editing where voice and quality matter: main session, or `dev` for self-contained piece with style samples in prompt. Engineering documentation with factual precision (protocols, specs): main session, max `dev`.
-- Ordinary development (features, routine refactoring, debugging, tests): main session, or `dev` for self-contained piece. dev is not cheaper than main session if models match: call it for context isolation or parallel work, not token savings; when unsure, keep piece in main session.
-- New project or app from scratch following known platform patterns (including non-trivial ecosystem frameworks you work with): `dev`. `hard` engages only when dev hits a concrete technical wall and names it. The word "architecture" alone does not raise tier.
-- `hard`, if any one criterion holds: (a) two fix attempts in main session or on dev did not yield confirmed result; (b) bug involves races, concurrency, or reproduces unstably; (c) refactor changes public API or data schema and requires migration; (d) change touches roughly 10+ files with linked logic.
-- `super`, only in two cases: (1) hard explicitly states it cannot take the task in one pass, or prior failure on this piece is confirmed by history; (2) clearly multi-hour continuous autonomous work that cannot be split into chunks for hard, or maximum cost-of-error tasks (critical data migrations, payment and subscription flows). Large context volume alone is not reason: dev and hard have the same window. Before spawning super, name expected spend to user and wait for explicit chat approval; without confirmation, do not spawn super.
-- Design-tool mockup port to code: `dev`; spec, screenshots, and target files go in prompt; piece is self-contained. Do not use cheap: markup transfer requires judgment and visual precision. Visual result check and user iteration: main session. General principle: keep work with feedback loop (screenshot edits) in main session, delegate only pieces with clear done-criterion, closeable in one pass.
+Nothing applies: route by the table. An unresolved fork in the task: ask the owner in chat, then spawn the agent with the decision baked into the prompt, instead of keeping the task yourself.
 
-## How to route
+## Never delegate (main session only)
 
-1. First check delegation fitness (section above), then estimate task difficulty, not project scale. Delegation has three overhead items: prompt composition with context, re-reading files by agent at full cost (main session cache is unavailable), wait time. Thresholds: do not delegate edits under ~50 lines in one or two files, and any task where explanation length exceeds work length. Delegate to cheap when there is much mechanics (3+ files or long generated output). Batch one-off small pieces: send several small chunks to one agent in one spawn with a list, not separate calls. One overhead instead of N.
-2. On unclear complexity, climb the ladder from bottom up: dev, then hard, then super, only if prior tier truly failed (exception: known non-splittable multi-hour autonomous work can go to super directly after user approval). At each escalation, include in next tier's prompt everything prior tier learned: diagnosis, repro steps, affected files, tested and rejected hypotheses. Otherwise expensive model re-pays for already-done reconnaissance.
-3. Never trade correctness for cost on genuinely hard work: escalate without hesitation.
-4. You cannot change main session model yourself. User sets default once via model switch; afterward escalation goes through agents, not constant model switching.
+- Secrets and release procedures: credentials, signing, notarization, store submissions, deployment.
+- git push and destructive git: reset, force push, history rewrites, rollbacks. Clarification: deleting files and directories strictly by an explicitly named list from the request counts as mechanics for cheap; destructive means anything that rewrites git history or goes beyond what was explicitly named.
+- The overwrite act of canon-file syncs: hard does the staging verification and hash-diff, the main session confirms and performs the overwrite.
+- Personal legal, tax, and medical matters.
+- Interactive work with mid-task confirmations: forms, purchases, publishing, browser flows.
+
+## Wide search: fan-out
+
+Haiku's 200K context is not a ban on wide search, it is an instruction to split. N parallel haiku spawns by directory or subsystem, each returning a compact report, the main session merges. A single full-walk spawn only when the exact paths are known in advance.
+
+## Overhead: the single rule
+
+Delegation fails to pay off in exactly one case: the spawn prompt is longer than the edit itself at an exactly known place. That is exception (c) above. The old thresholds ("don't delegate under 50 lines", "explanation longer than the work", "prompt prep is half the task") are gone: they forbade precisely the tasks cheap exists for.
 
 ## Prompt on spawn
 
-Pass everything agent needs to succeed: exact file paths, git branch, acceptance criterion, constraints, decisions already made, known pitfalls, and what to report back. If prompt prep takes half the task, do it in main session.
+Pass everything the agent cannot succeed without: exact file paths, git branch, acceptance criterion, constraints, decisions already made, known pitfalls, and what to report back.
+
+## Worked examples, resolved to a tier
+
+1. "An untracked build/ directory of several GB: check git check-ignore, extend .gitignore, remove the directory, commit": cheap, one spawn. Commands and criterion are named, no judgment needed.
+2. "Replace every word form of term A with term B across the repository": cheap; fan out into parallel spawns when the volume is large.
+3. "Add an English locale to the app": dev. Self-contained, clear done criterion.
+4. "Adversarial review of a rollback engine (inverses, supersession guards, races on a POST endpoint)": straight to hard, not after two failures.
+5. "Sync canonical files from an archive": hard builds a staging copy, hash-diff, and pre-sync verification; the main session confirms and performs the overwrite over canon.
+6. "Notarization with a Developer ID": main session only, no agents.
+7. "Where is X handled in a large monorepo": three parallel Explore spawns with model: haiku, split by subsystem.
 
 ## Report on models and tokens
+
+Unit of account is the "Reply": everything between one user message and the next, regardless of how many agents, tools, or hook firings happen inside it (details in CLAUDE.md). Exactly one report at the end of each reply, never accumulating.
 
 Two independent reports, different triggers.
 
@@ -64,6 +82,6 @@ Two independent reports, different triggers.
 
 **Session wrap, at new-chat boundary.** Separately, at the same rare boundaries (task closed, context expanded, ceiling, explicit request), show full summary: task list for session, which model or agent owned each, total tokens per model.
 
-Common to both: name models directly, not by persona. Numbers only real; if source is unavailable, say so, do not invent.
+Common to both: name models directly, not by persona. Numbers only real; if source is unavailable, say so, do not invent. Report is one line, no split between main session and agents: every model that actually ran this reply, in bold, its share of the reply's total output tokens in parentheses right after, multiple models separated by "|" with spaces on both sides. A single tier called: (100%) for it alone. Parentheses only ever around the percentage, no other parentheticals inside the line, ever. Track the main session's current model from `/model` commands and hook data, not from session start; a mid-exchange model switch is just one more model in the percentage list, no separate notation needed. Agents from a Workflow run: no per-model split available, so the whole aggregate is one entry joined with "+", its percentage computed against the reply's grand total; details and example in CLAUDE.md — the completion notification only gives a combined `subagent_tokens` figure, don't invent a split between models.
 
-Enabled by default, toggled off/on by `/usage-report` command (see `skills/usage-report`) or plain request in chat, which works even if the command itself did not load.
+If a chat has been open since before CLAUDE.md or this skill last changed, it's running on stale rules: `/refresh-rules` re-reads the current files right in that chat, no new chat needed (see `skills/refresh-rules`).

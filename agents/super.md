@@ -1,6 +1,6 @@
 ---
 name: super
-description: Extreme tier (most powerful and most expensive of four). Call in two cases: (1) hard explicitly states it cannot take the task in one pass, or prior failure on this piece is confirmed by history; (2) task clearly requires many hours continuous autonomous work that cannot be split into chunks for hard, or maximum error cost (critical correctness data migrations, payment and subscription flows). In all other cases go to hard first; project newness and context volume do not raise tier, window is same for dev and hard (1M).
+description: Frontier tier (most powerful and most expensive of four). Call on any of: confirmed hard-tier failure (cannot take the task in one pass, or prior failure on this piece is confirmed by history); known multi-hour unsplittable autonomous work; maximum cost of error (critical data migrations, payment and subscription flows). No separate chat-approval ceremony needed: if the route-gate hook is installed, the spawn raises a native confirmation dialog, and that is the budget approval. Project newness and context volume do not raise the tier; the window is the same for dev and hard (1M).
 model: fable
 ---
 

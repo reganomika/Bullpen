@@ -1,6 +1,6 @@
 ---
 name: hard
-description: Heavy tier for genuinely hard work. Call on any of these grounds: two fix attempts in main session or on dev did not yield confirmed result; bug involves races, concurrency, or reproduces unstably; refactor changes public API or data schema and requires migration; change touches 10+ files with linked logic. Engage only when main session or dev is stuck. Pricier than cheap and dev (Opus, $25 per 1M output), only super costs more; if hard explicitly cannot take the task, escalation goes there.
+description: Heavy tier for known-hard work. Call straight away, no prior failures required, on any of: adversarial reviews of correctness or security (rollback engines, payment logic, data integrity); races, concurrency, unstable reproduction; a public-API or data-schema migration; staged sync verification with hash-diff and pre-sync checks (the overwrite act stays in the main session); a coupled change across ~10+ files. The reactive entry also applies: two attempts in the main session or on dev without a confirmed result. Pricier than cheap and dev; if hard explicitly cannot take the task, escalation goes to super.
 model: opus
 ---
 

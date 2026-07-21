@@ -13,11 +13,10 @@ if [ -f "$HOME/.claude/hooks/token-report.disabled" ]; then
 fi
 
 # Защита от бесконечного цикла: второй Stop в рамках одного и того же
-# принудительного продолжения — больше не блокируем.
+# принудительного продолжения — больше не блокируем. Но состояние ниже
+# всё равно пересохраняем: иначе токены самой дописанной строки отчёта
+# не попадают в baseline и утекают в дельту следующего обмена.
 STOP_HOOK_ACTIVE="$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)"
-if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
-  exit 0
-fi
 
 TRANSCRIPT="$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)"
 SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)"
@@ -31,9 +30,12 @@ mkdir -p "$STATE_DIR" 2>/dev/null
 STATE_FILE="$STATE_DIR/${SESSION_ID}.json"
 EMPTY='{"output":0,"cache_creation":0,"cache_read":0,"input":0,"models":{}}'
 
-# Первый вызов в этой сессии: базы для дельты ещё нет, честно посчитать
-# "этот один обмен" нельзя. Молча запоминаем базу и начинаем показывать
-# со следующего вызова.
+# Первый вызов в этой сессии: если это и правда самый первый обмен (в
+# транскрипте ровно одна пользовательская реплика), базой честно считаем
+# ноль и показываем отчёт сразу. Если пользовательских реплик уже
+# несколько, а файла состояния нет (хук включили посреди сессии либо файл
+# состояния потерялся), честно посчитать "этот один обмен" нельзя. Молча
+# запоминаем базу и показываем со следующего вызова.
 IS_FIRST_RUN=0
 if [ ! -f "$STATE_FILE" ]; then
   IS_FIRST_RUN=1
@@ -54,6 +56,28 @@ if [ -z "$CURRENT" ]; then
   exit 0
 fi
 
+# Второй проход того же обмена (после принудительного дописывания отчёта):
+# не блокируем повторно, но baseline обновляем, чтобы токены строки отчёта
+# не утекли в следующий обмен.
+if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
+  printf '%s' "$CURRENT" > "$STATE_FILE" 2>/dev/null
+  exit 0
+fi
+
+# Сколько настоящих пользовательских реплик уже в транскрипте (tool_result
+# не в счёт, это не человек, а результат инструмента, вернувшийся с ролью user).
+HUMAN_TURNS="$(jq -n '
+  reduce (inputs | select(.type=="user")) as $u
+    (0;
+      if (($u.message.content | type) == "string")
+         or ((($u.message.content | type) == "array")
+             and (($u.message.content | map(.type=="tool_result") | any) | not))
+      then . + 1
+      else .
+      end)
+' "$TRANSCRIPT" 2>/dev/null)"
+[ -z "$HUMAN_TURNS" ] && HUMAN_TURNS=2
+
 if [ -f "$STATE_FILE" ]; then
   PREV="$(cat "$STATE_FILE" 2>/dev/null)"
   [ -z "$PREV" ] && PREV="$EMPTY"
@@ -63,7 +87,7 @@ fi
 
 printf '%s' "$CURRENT" > "$STATE_FILE" 2>/dev/null
 
-if [ "$IS_FIRST_RUN" = "1" ]; then
+if [ "$IS_FIRST_RUN" = "1" ] && [ "$HUMAN_TURNS" -gt 1 ] 2>/dev/null; then
   exit 0
 fi
 
