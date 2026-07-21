@@ -2,6 +2,19 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-21
+
+A second pass from the same reviewer on the 1.2.0 fixes, again verified against Claude Code's own docs (`model-config`) before acting.
+
+### Added
+- `route-gate.sh` warns once, loudly, when `jq` isn't installed, instead of failing open silently forever. A hand-written JSON block (jq itself is what's missing, so it can't build the message) blocks the first spawn attempt with install instructions, marks itself warned, and goes back to silent fail-open after that, so it never nags on every call.
+- FAQ: an effort/model support table (which of the four tiers' pinned models actually support which `effort` levels, and that Claude Code clamps down silently rather than erroring on an unsupported one). Found in the process: Haiku isn't in Claude Code's effort-support table at all, so `cheap`'s `effort: low` is very likely a no-op, kept for consistency, not because it changes anything.
+- FAQ: effort and extended thinking are related but distinct. Subagents inherit the session's thinking on/off toggle with no per-subagent override; `effort` only controls depth once thinking is on. Fable 5 (`super`) can't have thinking disabled at all regardless of the session setting, so this doesn't affect it. Sonnet 5 and Opus 4.8 (`dev`, `hard`) do inherit the toggle, so session-level thinking being off can suppress their reasoning depth even with `effort: high`/`xhigh` set.
+- 2 new test cases for the jq-missing warning (21 total).
+
+### Changed
+- The `allow-tier-model-overridden` log entry and its FAQ explanation now say plainly that the logged override model is observed from the hook's own environment, not verified against what Claude Code actually resolved: an excluded value under an org's `availableModels` allowlist gets silently skipped by Claude Code, a case the hook has no way to detect.
+
 ## [1.2.0] - 2026-07-21
 
 Fixes and corrections from an independent review, verified line by line against Claude Code's own docs before acting on any of it.

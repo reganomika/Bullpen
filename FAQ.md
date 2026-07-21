@@ -76,11 +76,25 @@ Rename `super` to your own top tier's name without setting `ROUTE_GATE_ASK_AGENT
 
 ### Does anything override a tier's pinned model even when route-gate.sh allows it?
 
-Yes: `CLAUDE_CODE_SUBAGENT_MODEL`, a Claude Code environment variable, not one of ours. If it's set, Claude Code resolves it before the per-invocation `model` parameter and before the subagent's own frontmatter, so it silently overrides even a tier agent's pinned model. `route-gate.sh` can't stop this, it isn't a decision the hook gets consulted on, but it does detect the variable and log `allow-tier-model-overridden` instead of a plain `allow-tier`, and records the actual overriding model in `route-gate.log` instead of pretending the frontmatter model ran. Check `/routing-status` if a tier's token cost looks wrong, this is the first thing to rule out. Setting the variable to `inherit` is a no-op as of Claude Code v2.1.196+, same as leaving it unset.
+Yes: `CLAUDE_CODE_SUBAGENT_MODEL`, a Claude Code environment variable, not one of ours. If it's set, Claude Code resolves it before the per-invocation `model` parameter and before the subagent's own frontmatter, so it silently overrides even a tier agent's pinned model. `route-gate.sh` can't stop this, it isn't a decision the hook gets consulted on, but it does detect the variable and log `allow-tier-model-overridden` instead of a plain `allow-tier`, recording the overriding model instead of pretending the frontmatter model ran. Treat that log entry as observed, not verified: the hook only sees its own copy of the environment. If the override value is excluded by an organization's `availableModels` allowlist, Claude Code silently skips it and falls back to the inherited model instead, and the hook has no way to know that happened, so the logged value can be wrong in that specific case. Check `/routing-status` if a tier's token cost looks wrong regardless, this variable is the first thing to rule out. Setting it to `inherit` is a no-op as of Claude Code v2.1.196+, same as leaving it unset.
 
 ### Can I control how deeply a subagent thinks, not just which model it uses?
 
-Yes, since v2.1.198 or so, Claude Code subagents support an `effort` frontmatter field (`low`, `medium`, `high`, `xhigh`, `max`, availability depends on the model) that overrides the session's effort level. Each of the four tiers pins one: cheap=low, dev=high, hard=xhigh, super=max. This used to not exist, or at least this project didn't know about it, and the docs claimed thinking depth was "simulated through prompt instructions" only. That was wrong, or went stale; it's now a real, enforced parameter, and the prompt instructions in each agent's body reinforce it rather than stand in for it.
+Yes, real and enforced, not simulated through prompt instructions the way earlier versions of these docs claimed. Claude Code subagents support an `effort` frontmatter field that overrides the session's effort level, and each of the four tiers pins one: cheap=low, dev=high, hard=xhigh, super=max.
+
+Which levels a model actually supports varies, and using an unsupported one isn't an error, Claude Code silently clamps down to the highest level the model does support (`xhigh` runs as `high` on a model that tops out there, for instance):
+
+| Model (tier that uses it)     | Supported levels                        |
+| :----------------------------- | :--------------------------------------- |
+| Fable 5 (`super`)              | `low`, `medium`, `high`, `xhigh`, `max`  |
+| Sonnet 5 (`dev`), Opus 4.8 (`hard`) | `low`, `medium`, `high`, `xhigh`, `max`  |
+| Haiku (`cheap`)                | Not listed as supporting effort at all   |
+
+`hard`'s `xhigh` and `super`'s `max` are both genuinely supported by the models those tiers currently pin. `cheap`'s `effort: low` is very likely a no-op on Haiku, present for documentation and consistency, not because it changes anything, cheap gets its speed and cost from the model choice alone. If a tier's `model:` ever changes to something with a smaller effort range, its `effort:` value degrades gracefully to that model's ceiling rather than erroring.
+
+### Does `effort` control extended thinking too?
+
+Partially, and it depends which tier. Subagents inherit the main session's extended-thinking on/off setting as a plain toggle, there's no per-subagent override for that toggle specifically, only for how deep the thinking goes once it's on, which is what `effort` actually controls. For `super` (Fable 5), this doesn't matter: thinking cannot be disabled on Fable 5 at all, the session toggle has no effect there, so `effort: max` always gets real reasoning depth regardless of your session's thinking setting. For `dev` and `hard` (Sonnet 5, Opus 4.8), it does matter: if the session has extended thinking fully off, that setting carries into the subagent and their `effort: high`/`xhigh` won't produce actual extended thinking output, even though the effort level itself is still what's set. Check your session's thinking toggle if `hard` or `dev` seem to be reasoning less carefully than `effort` alone would suggest.
 
 ### The tier descriptions don't match my kind of work.
 

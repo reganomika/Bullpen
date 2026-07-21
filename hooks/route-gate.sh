@@ -27,14 +27,36 @@
 # the model" assumption breaks silently when this is set, so the hook logs a
 # distinct decision (allow-tier-model-overridden) instead of pretending the
 # frontmatter model is what actually ran.
+#
+# That log entry is observed, not verified: the hook only sees its own copy
+# of the environment, not Claude Code's actual resolution. If the override
+# value is excluded by an org's availableModels allowlist, Claude Code skips
+# it and falls back to the inherited model, silently, and the hook has no
+# way to know that happened, so the logged value can be wrong in that case.
 
 # Kill switch, checked fresh on every run (each run is its own process).
 if [ -f "$HOME/.claude/hooks/route-gate.disabled" ]; then
   exit 0
 fi
 
-# No jq: fail open rather than break every Agent call.
-command -v jq >/dev/null 2>&1 || exit 0
+# No jq: fail open rather than break every Agent call, same as any other
+# fail-open branch below. But this one is different in kind, not degree: it
+# disables the entire hook, silently, for every future spawn, not just this
+# one. Warn once (a hand-written JSON block, since jq itself is what's
+# missing) so it surfaces instead of vanishing. After the marker exists,
+# back to silent fail-open, so this never nags on every single spawn.
+if ! command -v jq >/dev/null 2>&1; then
+  JQ_WARNED="$HOME/.claude/hooks/state/route-gate.jq-missing-warned"
+  if [ ! -f "$JQ_WARNED" ]; then
+    mkdir -p "$HOME/.claude/hooks/state" 2>/dev/null
+    touch "$JQ_WARNED" 2>/dev/null
+    REASON='Route gate: jq is not installed, so route-gate.sh cannot read this Agent/Task call and every routing decision has been silently failing open, no enforcement at all, since the moment this stopped being true. Install it (macOS: brew install jq) then re-issue this call. This is a one-time warning; after this, a missing jq goes back to failing open silently, by design, so it does not block every spawn forever over one missing dependency.'
+    printf '{"decision":"block","reason":"%s"}\n' "$REASON"
+    printf '%s\n' "$REASON" >&2
+    exit 2
+  fi
+  exit 0
+fi
 
 INPUT="$(cat)"
 

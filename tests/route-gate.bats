@@ -161,3 +161,27 @@ last_decision() {
   [ "$(last_decision)" = "allow-tier" ]
   unset CLAUDE_CODE_SUBAGENT_MODEL
 }
+
+run_hook_no_jq() {
+  local emptybin="$BATS_TEST_TMPDIR/emptybin"
+  mkdir -p "$emptybin"
+  for c in bash cat mkdir touch printf date wc mv; do
+    ln -sf "$(command -v "$c")" "$emptybin/$c"
+  done
+  printf '%s' "$1" | PATH="$emptybin" "$HOOK"
+}
+
+@test "missing jq blocks once with a hand-written warning, no jq needed to produce it" {
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+  echo "$output" | grep -q '"decision":"block"'
+  echo "$output" | grep -qi "jq is not installed"
+  [ -f "$HOME/.claude/hooks/state/route-gate.jq-missing-warned" ]
+}
+
+@test "missing jq fails open silently after the first warning" {
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
