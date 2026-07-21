@@ -2,65 +2,69 @@
   <img src="assets/logo.svg" alt="Bullpen" width="340">
 </p>
 
-Маршрутизация задач для Claude Code с оглядкой на стоимость: четыре субагента, каждый закреплён за своим тиром модели, скилл решает, кого из них звать, хук форсирует честный отчёт по токенам после каждого обмена, и второй хук форсирует чекпоинт на границе контекста, пока окно разговора незаметно не съело весь бюджет.
+<p align="center">
+  <strong>English</strong> · <a href="README.ru.md">Русский</a>
+</p>
 
-## Какую проблему это решает
+Cost-aware task routing for Claude Code: four subagents pinned to four model tiers, a skill that decides which one to call, a hook that forces a real token-usage report after every exchange, and a second hook that forces a context-boundary checkpoint before your window quietly drains your budget.
 
-Claude Code легко гонять любую задачу на самой мощной модели, и так же легко забыть, что делаешь именно это. В долгих агентных сессиях история разговора пересчитывается заново на каждом шаге: за типичную многочасовую сессию разработки токены, потраченные на перечитывание накопленного контекста, обычно на порядок превышают токены, потраченные на сам вывод. Выбор модели важен. Сколько истории тащишь за собой, обычно важнее.
+## The problem this solves
 
-Bullpen решает именно это. Честная версия питча: экономия берётся из отправки поиска, разведки и механической работы на самую дешёвую модель (это форсирует гейт на пути спавна агента, не совет в промпте), тогда как делегирование той же модели покупает изоляцию контекста, а не скидку. Чек после каждого обмена показывает, что реально запускалось, так что видно, как это работает, а не приходится верить на слово.
+Claude Code makes it easy to run every task on your most capable model, and just as easy to forget you're doing it. In long agentic sessions, the conversation history gets reprocessed on every turn: for typical multi-hour coding sessions, tokens spent re-reading accumulated context routinely dwarf the tokens spent on actual output, by an order of magnitude. Model choice matters. How much history you drag along usually matters more.
 
-## Что внутри
+Bullpen is the routing system built to fix that. The honest version of the pitch: the savings come from sending search, recon, and mechanical work to the cheapest model (enforced by a gate on the agent-spawn path, not by advice), while same-model delegation buys context isolation, not discounts. A running receipt after every exchange shows what actually ran, so you see it working instead of taking it on faith.
 
-**Четыре субагента** (`agents/`), каждый закреплён за своим тиром модели:
+## What's in here
 
-- `cheap`: полностью специфицированная механика: переименования, чистки, бойлерплейт, правки доков, переводы по глоссарию. Сильнее всего работает как параллельный fan-out по списку мелких кусков
-- `dev`: дефолтный исполнитель самодостаточной реализации, фич, скоуп-рефакторинга, билд- и ран-проверок. Та же модель, что и основная сессия, поэтому даёт изоляцию контекста и параллелизм, а не экономию
-- `hard`: известно-трудная работа, вход проактивный: adversarial-ревью, гонки, миграции API и схем, staging-верификация синков, 10+ связанных файлов. Два неудачных захода ниже тоже квалифицируют, но не обязательны
-- `super`: предельный тир для подтверждённого провала `hard`, недробимой многочасовой автономной работы или максимальной цены ошибки. Хук route-gate поднимает нативный диалог подтверждения вместо чат-церемонии
+**Four subagents** (`agents/`), each pinned to one model tier:
 
-**Скилл маршрутизации** (`skills/model-routing/SKILL.md`) решает, какой тир звать, что вообще не делегировать (разрушающие git-операции, секреты, личные юридические и финансовые документы, всё, что требует уточнения, которое автономный субагент не может задать), и как передавать накопленный контекст между эскалирующими тирами, чтобы дорогая модель не переплачивала за уже сделанную дешёвой разведку. Он же управляет встроенными агентами `Explore` и `general-purpose` и параметром `model` у инструмента Agent, которые иначе молча наследуют модель сессии.
+- `cheap` — fully specified mechanics: renames, cleanups, boilerplate, doc edits, glossary translations; strongest as parallel fan-out over lists of small chunks
+- `dev` — the default executor for self-contained implementation: features, scoped refactors, build/run checks. Same model as your main session, so it buys context isolation and parallelism, not savings
+- `hard` — known-hard work, entered proactively: adversarial reviews, races, API/schema migrations, staged sync verification, 10+ coupled files. Two failed attempts below also qualify, but are not required
+- `super` — frontier tier for confirmed hard-tier failure, unsplittable multi-hour autonomous runs, or maximum cost of error; the route-gate hook raises a native confirmation dialog instead of a chat ceremony
 
-**Форсирующий хук** (`hooks/token-report.sh`) на событие `Stop` в Claude Code. Считает реальную дельту токенов за только что прошедший обмен (по транскрипту самой сессии) и блокирует завершение ответа, пока модель не допишет честный отчёт по расходу: это не промпт, который Claude может тихо пропустить, это шелл-скрипт, который харнесс запускает на каждом шаге. Защищён от бесконечного цикла полем `stop_hook_active`. Формат отчёта: одна строка, каждая модель, реально участвовавшая в этом ответе (основная сессия и любые агенты вместе), с долей от общего числа output-токенов ответа в процентах:
+**A routing skill** (`skills/model-routing/SKILL.md`) that decides which tier to call, what not to delegate at all (destructive git operations, secrets, personal/legal/financial documents, anything that needs a clarification an autonomous subagent can't ask for), and how to hand off accumulated context between escalating tiers so the expensive model doesn't re-pay for discovery the cheap one already did. It also governs the built-in `Explore` and `general-purpose` agents and the Agent tool's per-call `model` parameter, which otherwise silently inherit your session model.
+
+**A forcing hook** (`hooks/token-report.sh`) on Claude Code's `Stop` event. It computes the real token delta for the exchange that just happened (from the session's own transcript) and blocks the response from ending until the model appends an honest usage report — this isn't a prompt Claude can quietly skip, it's a shell script the harness runs on every turn. Guarded against infinite loops via the `stop_hook_active` field. Report format: one line, every model that actually ran this reply (main session and any agents together) with its share of this reply's total output tokens as a percentage:
 
 ```
 > 🖥️ **Sonnet 5** (70%) | **Opus 4.8** (30%)
 ```
 
-Один вызванный тир на весь ответ просто показывает (100%) у себя одного.
+A single tier called for the whole reply just shows (100%) for it alone.
 
-**Хук принуждения** (`hooks/route-gate.sh`) на событие `PreToolUse` для вызовов `Agent`/`Task`. Наставительная проза про маршрутизацию доказанно ничего не давала в истории этой самой системы, гейт на пути спавна дал результат. Что он делает: агенты-тиры проходят нетронутыми; `Explore` без `model` автоматически переписывается на haiku (передай явную модель, чтобы это переопределить); `general-purpose` без `model` отклоняется с инструкцией, пока модель не названа; `super` поднимает нативный диалог подтверждения. Вызовы изнутри субагентов, неизвестные типы агентов и сессии `bypassPermissions` проходят нетронутыми. Каждое решение логируется в `~/.claude/hooks/state/route-gate.log` (TSV), это же и проверка здоровья: **хук по умолчанию fail-open** (нет jq, изменился формат payload, переименовали инструменты), так что если лог замолчал, а агенты явно спавнятся, гейт мёртв и вернулось старое поведение. Мгновенный выключатель: `touch ~/.claude/hooks/route-gate.disabled`. Включить обратно: `rm`. В скрипте намеренно нет цифр в долларах: цены устаревают, порядок тиров нет.
+**An enforcement hook** (`hooks/route-gate.sh`) on Claude Code's `PreToolUse` event for `Agent`/`Task` calls. Advisory prose about routing demonstrably did nothing in this system's own history; a gate on the spawn path did. What it does: tier agents pass untouched; `Explore` with no `model` is auto-rewritten to run on haiku (pass an explicit model to override); `general-purpose` with no `model` is denied with instructions until a model is named; `super` raises a native confirmation dialog. Calls from inside subagents, unknown agent types, and `bypassPermissions` sessions all pass untouched. Every decision is logged to `~/.claude/hooks/state/route-gate.log` (TSV), which is also your health check: **the hook fails open by design** (missing jq, changed payload shape, renamed tools), so if the log goes quiet while you are clearly spawning agents, the gate is dead and old behavior is back. Instant off switch: `touch ~/.claude/hooks/route-gate.disabled`; on again with `rm`. The script contains no dollar figures on purpose; prices go stale, tier order does not.
 
-**Второй форсирующий хук** (`hooks/context-check.sh`) на том же событии `Stop`. Наставительная проза с просьбой к Claude заметить раздутый контекст доказанно ни разу не сработала за долгие поглощающие сессии, хук срабатывает. Он читает реальный размер контекста из транскрипта (суммарная нагрузка последнего ассистентского сообщения основной сессии, отдельно по каждой модели, чтобы переключение `/model` не искажало счёт) и, перейдя порог от окна модели, блокирует ответ, пока Claude не поднимет чекпоинт границы задачи. Два порога, оба от размера окна (`CONTEXT_CHECK_WINDOW` переопределяет, по умолчанию 1M): мягкий (~55%), это текстовая подсказка, которую Claude может отклонить ради сфокусированной непрерывной работы, и жёсткий (~88%, до автосжатия харнесса у ~99%), который форсирует вызов `AskUserQuestion` и повторяется на каждом шаге, пока чекпоинт реально не появится в транскрипте. Делит событие `Stop` с `token-report.sh`, но не его состояние (отдельный файл `<session_id>.context.json`), и оба уважают `stop_hook_active`. Fail-open (нет jq, нет транскрипта, битый payload). Мгновенный выключатель: `touch ~/.claude/hooks/context-check.disabled`. Включить обратно: `rm`.
+**A second forcing hook** (`hooks/context-check.sh`) on the same `Stop` event. Advisory prose asking Claude to notice context bloat demonstrably never fired during long absorbing sessions; a hook does. It reads the real context size from the transcript (summed usage of the last main-session assistant message, tracked per model so a `/model` switch does not skew it) and, past a percentage of the model's window, blocks the response until Claude raises the task-boundary checkpoint. Two tiers, both scaled to the window (`CONTEXT_CHECK_WINDOW` overrides it, default 1M): a soft mark (~55%) that is an advisory text nudge Claude may decline for focused continuous work, and a hard mark (~88%, before the harness auto-compacts near ~99%) that forces an `AskUserQuestion` and re-fires every turn until the checkpoint actually appears in the transcript. It shares the `Stop` event with `token-report.sh` but never its state (separate `<session_id>.context.json` file), and both honor `stop_hook_active`. Fails open (missing jq, no transcript, bad payload). Instant off switch: `touch ~/.claude/hooks/context-check.disabled`; on again with `rm`.
 
-**Опциональное правило для CLAUDE.md** (`CLAUDE.md.example`) заставляет Claude проактивно замечать раздутие контекста и предлагать структурированный выбор вместо того, чтобы молча тащить раздутый разговор дальше: сгенерировать промпт-передачу для нового чата, предложить очистить текущий или продолжить. Правило теперь подкреплено хуком, не только советом: `context-check.sh` даёт числовую половину (действительно ли контекст большой), Claude по-прежнему сам судит смысловую половину (закрыта ли задача, нужна ли ещё старая история).
+**An optional CLAUDE.md rule** (`CLAUDE.md.example`) that has Claude proactively flag context bloat and offer a structured choice instead of silently dragging a bloated conversation forward: generate a handoff prompt for a new chat, suggest clearing the current one, or keep going. The rule is hook-backed now, not advisory-only: `context-check.sh` supplies the numeric half (is context actually large), Claude still judges the semantic half (is the task closed, is the old history still needed).
 
-**Команда обновления** (`skills/refresh-rules/SKILL.md`, вызывается как `/refresh-rules`) нужна, когда правишь CLAUDE.md или скилл маршрутизации при уже открытом чате. Claude Code грузит CLAUDE.md в системный промпт один раз при старте сессии и не обновляет на лету, поэтому уже идущий чат продолжает работать по тем правилам, что были на старте, а не по тем, что сейчас в файле. `/refresh-rules` перечитывает текущие файлы и применяет их до конца этой сессии, без рестарта. Помогает только с правками правил и формата в уже установленных файлах: совсем новые агенты или заново зарегистрированные хуки всё равно требуют свежей сессии, это уровень харнесса, куда команда дотянуться не может.
+**A refresh command** (`skills/refresh-rules/SKILL.md`, invoked as `/refresh-rules`) for when you edit CLAUDE.md or the routing skill while a chat is already open. Claude Code loads CLAUDE.md into the system prompt once at session start and doesn't hot-reload it, so an already-running chat keeps following whatever was true when it started, not what the file says now. `/refresh-rules` re-reads the current files and applies them for the rest of that session, no restart needed. It only helps with rule and format changes in files that were already installed: brand-new agents or newly registered hooks still need a fresh session, that's a harness-level thing this command can't reach into.
 
-## Честные ограничения
+## Honest limitations
 
-- **У субагентов нет настоящей ручки "effort" на задачу.** Выбор модели, реальный рычаг; глубина размышления по тирам симулируется инструкциями в промпте, а не форсируется параметром. Не жди буквального контроля над глубиной рассуждения агента, только над тем, какая модель его запускает.
-- **Названия моделей и цены устареют.** Держись относительного порядка (от дешёвой к самой дорогой) в `SKILL.md`, это несущая логика документа. Проверяй актуальные цены, прежде чем доверять конкретным цифрам оттуда.
-- **Хук запускается как настоящий шелл-скрипт на каждый ответ, в каждом проекте, сразу после установки.** Прочитай его перед установкой: это верно для любого хука от кого угодно, не только для этого.
-- **Это отражает один рабочий процесс, не универсальный.** Он вырос из разработки софта с примесью контента и работы с документами. Подстрой описания тиров в `skills/model-routing/SKILL.md` под свой набор задач, прежде чем полагаться на них.
-- **Хук контекста форсирует настоящий вызов инструмента только на жёстком пороге (~88%); мягкий порог лишь подсказывает текстом, и Claude может его отклонить.** Хук проверяет размер только на границах хода, поэтому один ход, который перепрыгивает с уровня ниже жёсткого порога сразу за точку автосжатия, харнесс всё равно может сжать раньше, чем хук успеет сработать.
+- **Subagents don't get a real per-task "effort" dial.** Model choice is a real lever; per-tier thinking depth is simulated through prompt instructions, not an enforced parameter. Don't expect literal control over reasoning depth per agent, only over which model runs it.
+- **Model names and prices will go stale.** Treat the relative ordering (cheapest to priciest) as the load-bearing logic in `SKILL.md`. Check current pricing before trusting any specific numbers written there.
+- **The hook is a real shell script that runs on every response, in every project, once installed.** Read it before installing it — that's true of any hook from anyone, not just this one.
+- **This reflects one workflow, not a universal one.** It grew out of software development work with some content and document tasks mixed in. Adjust the tier descriptions in `skills/model-routing/SKILL.md` to match your own task mix before relying on it.
+- **The context hook forces a real tool call only at the hard (~88%) tier; the soft tier is a text nudge Claude can decline.** And it only samples at turn boundaries, so a single turn that jumps from below the hard mark past the auto-compact point can still be compacted by the harness before it fires.
 
-## Установка
+## Install
 
-### Как плагин (рекомендуется)
+### As a plugin (recommended)
 
 ```
 /plugin marketplace add reganomika/Bullpen
 /plugin install bullpen@bullpen
 ```
 
-Вместо `reganomika/Bullpen` точно так же работает путь к локальному клону. Это разом регистрирует все четыре агента, оба скилла и `hooks/hooks.json` (`token-report.sh` и `context-check.sh` на `Stop`, `route-gate.sh` на `PreToolUse` для `Agent`/`Task`), без правки `settings.json`. Перезапусти Claude Code (или выполни `/reload-plugins`) один раз после установки, чтобы подхватить агентов и хуки; правки скиллов применяются на лету.
+A local clone path works the same way in place of `reganomika/Bullpen`. This registers all four agents, both skills, and `hooks/hooks.json` (`token-report.sh` and `context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse` for `Agent`/`Task`) in one step, no `settings.json` edit needed. Restart Claude Code (or run `/reload-plugins`) once after install to pick up the agents and hooks; skill edits apply live from then on.
 
-`CLAUDE.md.example` никогда не ставится автоматически: плагинная система принципиально не грузит файлы CLAUDE.md. Добавь его содержимое в свой `~/.claude/CLAUDE.md` вручную, независимо от способа установки.
+`CLAUDE.md.example` is the one piece that never auto-installs, the plugin system doesn't load CLAUDE.md files by design. Append its contents to your own `~/.claude/CLAUDE.md` by hand, regardless of install method.
 
-Чтобы выключить хук (везде и сразу, без рестарта): `touch ~/.claude/hooks/token-report.disabled` (или `context-check.disabled`, `route-gate.disabled`) в собственной папке `hooks/` этого плагина. Включить обратно: `rm` того же файла.
+To turn a hook off (globally, instantly, no restart needed): `touch ~/.claude/hooks/token-report.disabled` (or `context-check.disabled`, `route-gate.disabled`) in this plugin's own `hooks/` directory. Back on: `rm` the same file.
 
-### Скопировать в свой конфиг (без плагинной системы)
+### Copy into your own config (no plugin system)
 
 ```bash
 git clone <this-repo-url>
@@ -75,7 +79,7 @@ cp <repo>/hooks/context-check.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/token-report.sh ~/.claude/hooks/route-gate.sh ~/.claude/hooks/context-check.sh
 ```
 
-Дальше добавь хуки в `~/.claude/settings.json` (слей со своим существующим файлом, не перезаписывай):
+Then add the hooks to `~/.claude/settings.json` (merge into your existing file, don't overwrite it):
 
 ```json
 {
@@ -96,16 +100,16 @@ chmod +x ~/.claude/hooks/token-report.sh ~/.claude/hooks/route-gate.sh ~/.claude
 }
 ```
 
-Запусти новую сессию Claude Code (или перезапусти текущую), чтобы подхватить новых агентов, скиллы и хуки. По желанию добавь содержимое `CLAUDE.md.example` в свой `~/.claude/CLAUDE.md`. Дальше, после установки, правка CLAUDE.md или скилла маршрутизации уже не требует рестарта для чатов, которые хочешь оставить открытыми: вместо этого выполни в них `/refresh-rules`.
+Start a new Claude Code session (or restart the current one) to pick up the new agents, skills, and hooks. Optionally, append the contents of `CLAUDE.md.example` to your own `~/.claude/CLAUDE.md`. Later on, once this is installed, editing CLAUDE.md or the routing skill again doesn't require a restart for chats you want to keep open: run `/refresh-rules` in them instead.
 
-Чтобы выключить форсированный отчёт (везде и сразу, без рестарта): `touch ~/.claude/hooks/token-report.disabled`. Обратно: `rm ~/.claude/hooks/token-report.disabled`. Чекпоинт контекста выключить: `touch ~/.claude/hooks/context-check.disabled`. Включить обратно: `rm`.
+To turn the forced report off (globally, instantly, no restart needed): `touch ~/.claude/hooks/token-report.disabled`. Back on: `rm ~/.claude/hooks/token-report.disabled`. Context checkpoint off: `touch ~/.claude/hooks/context-check.disabled`, back on with `rm`.
 
-### Попробовать без установки
+### Try without installing
 
 ```bash
 claude --plugin-dir <path-to-this-repo>
 ```
 
-## Лицензия
+## License
 
-MIT, см. `LICENSE`.
+MIT, see `LICENSE`.
