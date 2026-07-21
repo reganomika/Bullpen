@@ -2,10 +2,6 @@
   <img src="assets/logo.svg" alt="Bullpen" width="460">
 </p>
 
-<p align="center">
-  <strong>English</strong> · <a href="README.ru.md">Русский</a>
-</p>
-
 Cost-aware task routing for Claude Code. Four subagents pinned to four model tiers, a skill that picks the right one for each task, and hooks that enforce the routing and context rules mechanically instead of relying on the model to remember.
 
 ## What's in here
