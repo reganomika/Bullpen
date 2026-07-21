@@ -6,86 +6,44 @@
   <strong>English</strong> · <a href="README.ru.md">Русский</a>
 </p>
 
-Cost-aware task routing for Claude Code: four subagents pinned to four model tiers, a skill that decides which one to call, a hook that forces a real token-usage report after every exchange, and a second hook that forces a context-boundary checkpoint before your window quietly drains your budget.
+Cost-aware task routing for Claude Code: four subagents pinned to four model tiers, a skill that decides which one to call, and two hooks that enforce the routing and context rules mechanically instead of leaving them to prose. Token and routing stats are on demand, via two slash commands, not forced into every reply.
 
 ## The problem this solves
 
-Claude Code makes it easy to run every task on your most capable model, and just as easy to forget you're doing it. In long agentic sessions, the conversation history gets reprocessed on every turn: for typical multi-hour coding sessions, tokens spent re-reading accumulated context routinely dwarf the tokens spent on actual output, by an order of magnitude. Model choice matters. How much history you drag along usually matters more.
+Claude Code makes it easy to run every task on your most capable model, and just as easy to forget you're doing it. In long agentic sessions, tokens spent re-reading accumulated context routinely dwarf tokens spent on actual output, by an order of magnitude. Model choice matters. How much history you drag along usually matters more.
 
-Bullpen is the routing system built to fix that. The honest version of the pitch: the savings come from sending search, recon, and mechanical work to the cheapest model (enforced by a gate on the agent-spawn path, not by advice), while same-model delegation buys context isolation, not discounts. A running receipt after every exchange shows what actually ran, so you see it working instead of taking it on faith.
+Bullpen routes work to the cheapest model that can do it: search, recon, and mechanical tasks go to the cheapest tier (enforced by a gate on the agent-spawn path, not by advice), while same-model delegation buys context isolation, not discounts. Two on-demand commands show what actually ran, model by model, whenever you want to check.
 
 ## What's in here
 
 **Four subagents** (`agents/`), each pinned to one model tier:
 
-- `cheap` — fully specified mechanics: renames, cleanups, boilerplate, doc edits, glossary translations; strongest as parallel fan-out over lists of small chunks
-- `dev` — the default executor for self-contained implementation: features, scoped refactors, build/run checks. Same model as your main session, so it buys context isolation and parallelism, not savings
-- `hard` — known-hard work, entered proactively: adversarial reviews, races, API/schema migrations, staged sync verification, 10+ coupled files. Two failed attempts below also qualify, but are not required
-- `super` — frontier tier for confirmed hard-tier failure, unsplittable multi-hour autonomous runs, or maximum cost of error; the route-gate hook raises a native confirmation dialog instead of a chat ceremony
+- `cheap` — fully specified mechanics: renames, cleanups, boilerplate, doc edits, translations; strongest as parallel fan-out over lists of small chunks
+- `dev` — default executor for self-contained implementation: features, scoped refactors, build/run checks. Same model as your main session, so it buys context isolation and parallelism, not savings
+- `hard` — known-hard work, entered proactively: adversarial reviews, races, API/schema migrations, staged sync verification, 10+ coupled files
+- `super` — frontier tier for confirmed hard-tier failure, unsplittable multi-hour autonomous runs, or maximum cost of error; spawning it raises a native confirmation dialog
 
-**A routing skill** (`skills/model-routing/SKILL.md`) that decides which tier to call, what not to delegate at all (destructive git operations, secrets, personal/legal/financial documents, anything that needs a clarification an autonomous subagent can't ask for), and how to hand off accumulated context between escalating tiers so the expensive model doesn't re-pay for discovery the cheap one already did. It also governs the built-in `Explore` and `general-purpose` agents and the Agent tool's per-call `model` parameter, which otherwise silently inherit your session model.
+**A routing skill** (`skills/model-routing/SKILL.md`) that decides which tier to call, what never to delegate (destructive git, secrets, personal/legal/financial documents), and how to hand context up between escalating tiers. It also covers the built-in `Explore` and `general-purpose` agents and the Agent tool's `model` parameter, which otherwise silently inherit your session model.
 
-**A forcing hook** (`hooks/token-report.sh`) on Claude Code's `Stop` event. It computes the real token delta for the exchange that just happened (from the session's own transcript) and blocks the response from ending until the model appends an honest usage report — this isn't a prompt Claude can quietly skip, it's a shell script the harness runs on every turn. Guarded against infinite loops via the `stop_hook_active` field. Report format: one line, every model that actually ran this reply (main session and any agents together) with its share of this reply's total output tokens as a percentage:
+**`route-gate.sh`**, a `PreToolUse` hook on `Agent`/`Task` calls. `Explore` with no model is rewritten to haiku; `general-purpose` with no model is denied until one is named; `super` raises a confirmation dialog. Every decision logs to `~/.claude/hooks/state/route-gate.log`; a quiet log while you're clearly spawning agents means the gate died (it fails open by design). Off switch: `touch ~/.claude/hooks/route-gate.disabled`.
 
-```
-> 🖥️ **Sonnet 5** (70%) | **Opus 4.8** (30%)
-```
+**`context-check.sh`**, a `Stop` hook that reads context size from the transcript and, past a threshold, blocks the response until Claude raises a task-boundary checkpoint. Soft mark (~55% of the window) is a text nudge Claude can decline for focused work; hard mark (~88%, before harness auto-compact) forces an actual `AskUserQuestion` call and keeps re-firing until one shows up in the transcript. Window defaults to 1M, override with `CONTEXT_CHECK_WINDOW`. Off switch: `touch ~/.claude/hooks/context-check.disabled`.
 
-A single tier called for the whole reply just shows (100%) for it alone.
+**`CLAUDE.md.example`**, an optional rule that has Claude offer a structured choice at context-boundary time (new-chat handoff, clear and stay, or continue) instead of silently dragging a bloated conversation forward. `context-check.sh` supplies the numeric trigger; Claude still judges whether the task is actually closed.
 
-**An enforcement hook** (`hooks/route-gate.sh`) on Claude Code's `PreToolUse` event for `Agent`/`Task` calls. Advisory prose about routing demonstrably did nothing in this system's own history; a gate on the spawn path did. What it does: tier agents pass untouched; `Explore` with no `model` is auto-rewritten to run on haiku (pass an explicit model to override); `general-purpose` with no `model` is denied with instructions until a model is named; `super` raises a native confirmation dialog. Calls from inside subagents, unknown agent types, and `bypassPermissions` sessions all pass untouched. Every decision is logged to `~/.claude/hooks/state/route-gate.log` (TSV), which is also your health check: **the hook fails open by design** (missing jq, changed payload shape, renamed tools), so if the log goes quiet while you are clearly spawning agents, the gate is dead and old behavior is back. Instant off switch: `touch ~/.claude/hooks/route-gate.disabled`; on again with `rm`. The script contains no dollar figures on purpose; prices go stale, tier order does not.
+**`/refresh-rules`** re-reads CLAUDE.md and the routing skill inside an already-open chat, for when you've edited them mid-session and don't want to restart.
 
-**A second forcing hook** (`hooks/context-check.sh`) on the same `Stop` event. Advisory prose asking Claude to notice context bloat demonstrably never fired during long absorbing sessions; a hook does. It reads the real context size from the transcript (summed usage of the last main-session assistant message, tracked per model so a `/model` switch does not skew it) and, past a percentage of the model's window, blocks the response until Claude raises the task-boundary checkpoint. Two tiers, both scaled to the window (`CONTEXT_CHECK_WINDOW` overrides it, default 1M): a soft mark (~55%) that is an advisory text nudge Claude may decline for focused continuous work, and a hard mark (~88%, before the harness auto-compacts near ~99%) that forces an `AskUserQuestion` and re-fires every turn until the checkpoint actually appears in the transcript. It shares the `Stop` event with `token-report.sh` but never its state (separate `<session_id>.context.json` file), and both honor `stop_hook_active`. Fails open (missing jq, no transcript, bad payload). Instant off switch: `touch ~/.claude/hooks/context-check.disabled`; on again with `rm`.
+**`/usage-report`** shows a token/model report for the current session, computed from the transcript, on request.
 
-**An optional CLAUDE.md rule** (`CLAUDE.md.example`) that has Claude proactively flag context bloat and offer a structured choice instead of silently dragging a bloated conversation forward: generate a handoff prompt for a new chat, suggest clearing the current one, or keep going. The rule is hook-backed now, not advisory-only: `context-check.sh` supplies the numeric half (is context actually large), Claude still judges the semantic half (is the task closed, is the old history still needed).
-
-**A refresh command** (`skills/refresh-rules/SKILL.md`, invoked as `/refresh-rules`) for when you edit CLAUDE.md or the routing skill while a chat is already open. Claude Code loads CLAUDE.md into the system prompt once at session start and doesn't hot-reload it, so an already-running chat keeps following whatever was true when it started, not what the file says now. `/refresh-rules` re-reads the current files and applies them for the rest of that session, no restart needed. It only helps with rule and format changes in files that were already installed: brand-new agents or newly registered hooks still need a fresh session, that's a harness-level thing this command can't reach into.
-
-**A usage-report skill** (`skills/usage-report/SKILL.md`, invoked as `/usage-report`) shows the same per-session token report on demand instead of waiting for the next forced one, and doubles as the on/off switch for `token-report.sh` itself, from inside any chat, no shell needed.
-
-**A routing-status skill** (`skills/routing-status/SKILL.md`, invoked as `/routing-status`) is a second opinion on the two hooks above, computed independently of the chat's own self-report. It reads `route-gate.log` directly for what was actually gated this session, and the transcript directly for real per-model token totals, so you can check that routing and reporting are actually working instead of taking the chat's word for it.
+**`/routing-status`** cross-checks that routing is actually working: reads `route-gate.log` for what was gated this session and the transcript for real per-model token totals, independent of anything Claude says about itself.
 
 ## Commands
 
-Three of the pieces above are things you run yourself, not automation that fires on its own. Each is a skill, available as a slash command once installed.
-
-### `/refresh-rules`
-
-No arguments. Run it in an already-open chat right after editing CLAUDE.md or the routing skill:
-
-```
-/refresh-rules
-```
-
-Re-reads `~/.claude/CLAUDE.md`, this project's own `CLAUDE.md` (if any), and `model-routing/SKILL.md`, then applies them for the rest of the session. Returns three checkable artifacts so you can see it took effect instead of trusting a claim: the current token-report format as a literal example block, the current one-line definition of a "Reply", and the current routing iron rule.
-
-### `/usage-report`
-
-```
-/usage-report
-```
-
-Prints the token/model report for the current session right now, from the same real numbers (transcript, agent completion notifications) the forced report draws from.
-
-```
-/usage-report off
-```
-
-Runs `touch ~/.claude/hooks/token-report.disabled` and confirms the forced per-exchange report is off everywhere: every chat, every project, until turned back on.
-
-```
-/usage-report on
-```
-
-Removes that file and confirms the forced report is back on.
-
-### `/routing-status`
+`/refresh-rules`, `/usage-report`, and `/routing-status` are slash commands you run yourself; nothing here fires automatically. An earlier version of this project forced a token report at the end of every reply via a `Stop` hook — removed 2026-07-21 after a habit-driven duplicate-line bug that a text-only fix couldn't reliably prevent. Stats now show up only when asked.
 
 ```
 /routing-status
 ```
-
-Two tables for the current session, built straight from `~/.claude/hooks/state/route-gate.log` and the session transcript, not from the chat's own self-report:
 
 ```
 Routing:
@@ -100,15 +58,16 @@ Tokens:
   Opus 4.8     32,100  (14%)
 ```
 
-`deny-no-model` climbing means agents keep getting spawned with no model named. `rewrite-haiku` above zero means the Explore auto-route is actually firing. Reach for this when you want to confirm the routing skill is doing what `SKILL.md` says, not just take the chat's word for it.
+`deny-no-model` climbing means agents keep spawning with no model named. `rewrite-haiku` above zero means the Explore auto-route is actually firing.
 
 ## Honest limitations
 
-- **Subagents don't get a real per-task "effort" dial.** Model choice is a real lever; per-tier thinking depth is simulated through prompt instructions, not an enforced parameter. Don't expect literal control over reasoning depth per agent, only over which model runs it.
-- **Model names and prices will go stale.** Treat the relative ordering (cheapest to priciest) as the load-bearing logic in `SKILL.md`. Check current pricing before trusting any specific numbers written there.
-- **The hook is a real shell script that runs on every response, in every project, once installed.** Read it before installing it — that's true of any hook from anyone, not just this one.
-- **This reflects one workflow, not a universal one.** It grew out of software development work with some content and document tasks mixed in. Adjust the tier descriptions in `skills/model-routing/SKILL.md` to match your own task mix before relying on it.
-- **The context hook forces a real tool call only at the hard (~88%) tier; the soft tier is a text nudge Claude can decline.** And it only samples at turn boundaries, so a single turn that jumps from below the hard mark past the auto-compact point can still be compacted by the harness before it fires.
+- **No real per-task "effort" dial.** Model choice is the real lever; per-tier thinking depth is simulated through prompt instructions, not enforced.
+- **Model names and prices will go stale.** The relative ordering in `SKILL.md` is the load-bearing logic; check current pricing before trusting numbers.
+- **These are real shell scripts that run on every response or agent spawn, in every project, once installed.** Read them before installing.
+- **This reflects one workflow, not a universal one.** Adjust the tier descriptions in `SKILL.md` to your own task mix.
+- **`context-check.sh` forces a tool call only at the hard mark; the soft mark is a nudge Claude can decline,** and it only samples at turn boundaries, so a single turn can jump past auto-compact before it fires.
+- **A forced per-reply report was tried and abandoned** over a duplicate-line bug a text-only fix couldn't hold. On-demand commands don't have that failure mode, but you have to remember to ask.
 
 ## Install
 
@@ -119,52 +78,33 @@ Tokens:
 /plugin install bullpen@bullpen
 ```
 
-A local clone path works the same way in place of `reganomika/Bullpen`. This registers all four agents, all four skills, and `hooks/hooks.json` (`token-report.sh` and `context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse` for `Agent`/`Task`) in one step, no `settings.json` edit needed. Restart Claude Code (or run `/reload-plugins`) once after install to pick up the agents and hooks; skill edits apply live from then on.
+A local clone path works the same way in place of `reganomika/Bullpen`. Registers all four agents, all four skills, and both hooks (`context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse`) in one step. Restart Claude Code (or `/reload-plugins`) once after install; skill edits apply live from then on.
 
-`CLAUDE.md.example` is the one piece that never auto-installs, the plugin system doesn't load CLAUDE.md files by design. Append its contents to your own `~/.claude/CLAUDE.md` by hand, regardless of install method.
-
-To turn a hook off (globally, instantly, no restart needed): `touch ~/.claude/hooks/token-report.disabled` (or `context-check.disabled`, `route-gate.disabled`) in this plugin's own `hooks/` directory. Back on: `rm` the same file.
+`CLAUDE.md.example` never auto-installs — the plugin system doesn't load CLAUDE.md files. Append it to your own `~/.claude/CLAUDE.md` by hand.
 
 ### Copy into your own config (no plugin system)
 
 ```bash
 git clone <this-repo-url>
 cp <repo>/agents/*.md ~/.claude/agents/
-cp -r <repo>/skills/model-routing ~/.claude/skills/
-cp -r <repo>/skills/usage-report ~/.claude/skills/
-cp -r <repo>/skills/refresh-rules ~/.claude/skills/
-cp -r <repo>/skills/routing-status ~/.claude/skills/
+cp -r <repo>/skills/model-routing <repo>/skills/usage-report <repo>/skills/refresh-rules <repo>/skills/routing-status ~/.claude/skills/
 mkdir -p ~/.claude/hooks
-cp <repo>/hooks/token-report.sh ~/.claude/hooks/
-cp <repo>/hooks/route-gate.sh ~/.claude/hooks/
-cp <repo>/hooks/context-check.sh ~/.claude/hooks/
-chmod +x ~/.claude/hooks/token-report.sh ~/.claude/hooks/route-gate.sh ~/.claude/hooks/context-check.sh
+cp <repo>/hooks/route-gate.sh <repo>/hooks/context-check.sh ~/.claude/hooks/
+chmod +x ~/.claude/hooks/route-gate.sh ~/.claude/hooks/context-check.sh
 ```
 
-Then add the hooks to `~/.claude/settings.json` (merge into your existing file, don't overwrite it):
+Add to `~/.claude/settings.json` (merge into your existing file):
 
 ```json
 {
   "hooks": {
-    "Stop": [
-      { "hooks": [
-        { "type": "command", "command": "~/.claude/hooks/token-report.sh" },
-        { "type": "command", "command": "~/.claude/hooks/context-check.sh" }
-      ] }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Agent|Task",
-        "hooks": [ { "type": "command", "command": "~/.claude/hooks/route-gate.sh" } ]
-      }
-    ]
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/context-check.sh" }] }],
+    "PreToolUse": [{ "matcher": "Agent|Task", "hooks": [{ "type": "command", "command": "~/.claude/hooks/route-gate.sh" }] }]
   }
 }
 ```
 
-Start a new Claude Code session (or restart the current one) to pick up the new agents, skills, and hooks. Optionally, append the contents of `CLAUDE.md.example` to your own `~/.claude/CLAUDE.md`. Later on, once this is installed, editing CLAUDE.md or the routing skill again doesn't require a restart for chats you want to keep open: run `/refresh-rules` in them instead.
-
-To turn the forced report off (globally, instantly, no restart needed): `touch ~/.claude/hooks/token-report.disabled`. Back on: `rm ~/.claude/hooks/token-report.disabled`. Context checkpoint off: `touch ~/.claude/hooks/context-check.disabled`, back on with `rm`.
+Start a new session to pick up the agents, skills, and hooks. Append `CLAUDE.md.example` to your own CLAUDE.md if you want it. Off switch for either hook: `touch ~/.claude/hooks/<name>.disabled`, back on with `rm`.
 
 ### Try without installing
 

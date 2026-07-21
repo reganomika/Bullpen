@@ -72,16 +72,8 @@ Pass everything the agent cannot succeed without: exact file paths, git branch, 
 6. "Notarization with a Developer ID": main session only, no agents.
 7. "Where is X handled in a large monorepo": three parallel Explore spawns with model: haiku, split by subsystem.
 
-## Report on models and tokens
+## Tokens and models: on demand only
 
-Unit of account is the "Reply": everything between one user message and the next, regardless of how many agents, tools, or hook firings happen inside it (details in CLAUDE.md). Exactly one report at the end of each reply, never accumulating.
-
-Two independent reports, different triggers.
-
-**After each message inside chat.** At end of answer with real work (not clarification or small talk), show: which agents were delegated in exactly this exchange and actual tokens each spent (from their completion report, available immediately); and what this exchange cost main session in tokens, difference between current usage-field sum from session transcript file and sum from prior report, if such file is available in your environment. Unavoidable one-step lag: cannot count your own answer not yet sent, report always covers prior exchange. This is line-by-line report, not session total.
-
-**Session wrap, at new-chat boundary.** Separately, at the same rare boundaries (task closed, context expanded, ceiling, explicit request), show full summary: task list for session, which model or agent owned each, total tokens per model.
-
-Common to both: name models directly, not by persona. Numbers only real; if source is unavailable, say so, do not invent. Report is one line, no split between main session and agents: every model that actually ran this reply, in bold, its share of the reply's total output tokens in parentheses right after, multiple models separated by "|" with spaces on both sides. A single tier called: (100%) for it alone. Parentheses only ever around the percentage, no other parentheticals inside the line, ever. Track the main session's current model from `/model` commands and hook data, not from session start; a mid-exchange model switch is just one more model in the percentage list, no separate notation needed. Agents from a Workflow run: no per-model split available, so the whole aggregate is one entry joined with "+", its percentage computed against the reply's grand total; details and example in CLAUDE.md — the completion notification only gives a combined `subagent_tokens` figure, don't invent a split between models.
+No forced per-reply report anymore, removed 2026-07-21 (details in CLAUDE.md). Show token and model numbers only when asked, with `/usage-report` (what ran this session, model by model) or `/routing-status` (the same, plus the routing table from `route-gate.log`). Name models directly (Sonnet 5, Opus 4.8, Fable 5, Haiku 4.5), not by persona. Numbers only real; if a source is unavailable, say so, don't invent.
 
 If a chat has been open since before CLAUDE.md or this skill last changed, it's running on stale rules: `/refresh-rules` re-reads the current files right in that chat, no new chat needed (see `skills/refresh-rules`).
