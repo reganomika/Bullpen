@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/token-report.sh" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/context-check.sh" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-gate.sh" }
+        ]
+      }
+    ]
+  }
+}

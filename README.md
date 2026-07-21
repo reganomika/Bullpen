@@ -47,7 +47,20 @@ A single tier called for the whole reply just shows (100%) for it alone.
 
 ## Install
 
-### Copy into your own config (simplest)
+### As a plugin (recommended)
+
+```
+/plugin marketplace add reganomika/Bullpen
+/plugin install bullpen@bullpen
+```
+
+A local clone path works the same way in place of `reganomika/Bullpen`. This registers all four agents, both skills, and `hooks/hooks.json` (`token-report.sh` and `context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse` for `Agent`/`Task`) in one step, no `settings.json` edit needed. Restart Claude Code (or run `/reload-plugins`) once after install to pick up the agents and hooks; skill edits apply live from then on.
+
+`CLAUDE.md.example` is the one piece that never auto-installs, the plugin system doesn't load CLAUDE.md files by design. Append its contents to your own `~/.claude/CLAUDE.md` by hand, regardless of install method.
+
+To turn a hook off (globally, instantly, no restart needed): `touch ~/.claude/hooks/token-report.disabled` (or `context-check.disabled`, `route-gate.disabled`) in this plugin's own `hooks/` directory. Back on: `rm` the same file.
+
+### Copy into your own config (no plugin system)
 
 ```bash
 git clone <this-repo-url>

@@ -1,0 +1,11 @@
+{
+  "name": "bullpen",
+  "description": "Cost-aware model routing for Claude Code: per-call model selection across cheap/dev/hard/super subagents, enforced by hooks that gate routing and report real token usage.",
+  "author": {
+    "name": "reganomika",
+    "url": "https://github.com/reganomika"
+  },
+  "homepage": "https://github.com/reganomika/Bullpen",
+  "repository": "https://github.com/reganomika/Bullpen",
+  "license": "MIT"
+}

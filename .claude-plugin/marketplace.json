@@ -1,0 +1,14 @@
+{
+  "name": "bullpen",
+  "description": "Cost-aware model routing for Claude Code, self-hosted from this one repo.",
+  "owner": {
+    "name": "reganomika"
+  },
+  "plugins": [
+    {
+      "name": "bullpen",
+      "source": "./",
+      "description": "Cost-aware model routing for Claude Code"
+    }
+  ]
+}
