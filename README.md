@@ -41,6 +41,67 @@ A single tier called for the whole reply just shows (100%) for it alone.
 
 **A refresh command** (`skills/refresh-rules/SKILL.md`, invoked as `/refresh-rules`) for when you edit CLAUDE.md or the routing skill while a chat is already open. Claude Code loads CLAUDE.md into the system prompt once at session start and doesn't hot-reload it, so an already-running chat keeps following whatever was true when it started, not what the file says now. `/refresh-rules` re-reads the current files and applies them for the rest of that session, no restart needed. It only helps with rule and format changes in files that were already installed: brand-new agents or newly registered hooks still need a fresh session, that's a harness-level thing this command can't reach into.
 
+**A usage-report skill** (`skills/usage-report/SKILL.md`, invoked as `/usage-report`) shows the same per-session token report on demand instead of waiting for the next forced one, and doubles as the on/off switch for `token-report.sh` itself, from inside any chat, no shell needed.
+
+**A routing-status skill** (`skills/routing-status/SKILL.md`, invoked as `/routing-status`) is a second opinion on the two hooks above, computed independently of the chat's own self-report. It reads `route-gate.log` directly for what was actually gated this session, and the transcript directly for real per-model token totals, so you can check that routing and reporting are actually working instead of taking the chat's word for it.
+
+## Commands
+
+Three of the pieces above are things you run yourself, not automation that fires on its own. Each is a skill, available as a slash command once installed.
+
+### `/refresh-rules`
+
+No arguments. Run it in an already-open chat right after editing CLAUDE.md or the routing skill:
+
+```
+/refresh-rules
+```
+
+Re-reads `~/.claude/CLAUDE.md`, this project's own `CLAUDE.md` (if any), and `model-routing/SKILL.md`, then applies them for the rest of the session. Returns three checkable artifacts so you can see it took effect instead of trusting a claim: the current token-report format as a literal example block, the current one-line definition of a "Reply", and the current routing iron rule.
+
+### `/usage-report`
+
+```
+/usage-report
+```
+
+Prints the token/model report for the current session right now, from the same real numbers (transcript, agent completion notifications) the forced report draws from.
+
+```
+/usage-report off
+```
+
+Runs `touch ~/.claude/hooks/token-report.disabled` and confirms the forced per-exchange report is off everywhere: every chat, every project, until turned back on.
+
+```
+/usage-report on
+```
+
+Removes that file and confirms the forced report is back on.
+
+### `/routing-status`
+
+```
+/routing-status
+```
+
+Two tables for the current session, built straight from `~/.claude/hooks/state/route-gate.log` and the session transcript, not from the chat's own self-report:
+
+```
+Routing:
+  dev              x4   allow-tier
+  cheap            x6   allow-tier
+  Explore          x2   rewrite-haiku
+  general-purpose  x1   deny-no-model
+
+Tokens:
+  Sonnet 5    142,300  (61%)
+  Haiku 4.5    58,900  (25%)
+  Opus 4.8     32,100  (14%)
+```
+
+`deny-no-model` climbing means agents keep getting spawned with no model named. `rewrite-haiku` above zero means the Explore auto-route is actually firing. Reach for this when you want to confirm the routing skill is doing what `SKILL.md` says, not just take the chat's word for it.
+
 ## Honest limitations
 
 - **Subagents don't get a real per-task "effort" dial.** Model choice is a real lever; per-tier thinking depth is simulated through prompt instructions, not an enforced parameter. Don't expect literal control over reasoning depth per agent, only over which model runs it.
@@ -58,7 +119,7 @@ A single tier called for the whole reply just shows (100%) for it alone.
 /plugin install bullpen@bullpen
 ```
 
-A local clone path works the same way in place of `reganomika/Bullpen`. This registers all four agents, both skills, and `hooks/hooks.json` (`token-report.sh` and `context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse` for `Agent`/`Task`) in one step, no `settings.json` edit needed. Restart Claude Code (or run `/reload-plugins`) once after install to pick up the agents and hooks; skill edits apply live from then on.
+A local clone path works the same way in place of `reganomika/Bullpen`. This registers all four agents, all four skills, and `hooks/hooks.json` (`token-report.sh` and `context-check.sh` on `Stop`, `route-gate.sh` on `PreToolUse` for `Agent`/`Task`) in one step, no `settings.json` edit needed. Restart Claude Code (or run `/reload-plugins`) once after install to pick up the agents and hooks; skill edits apply live from then on.
 
 `CLAUDE.md.example` is the one piece that never auto-installs, the plugin system doesn't load CLAUDE.md files by design. Append its contents to your own `~/.claude/CLAUDE.md` by hand, regardless of install method.
 
@@ -72,6 +133,7 @@ cp <repo>/agents/*.md ~/.claude/agents/
 cp -r <repo>/skills/model-routing ~/.claude/skills/
 cp -r <repo>/skills/usage-report ~/.claude/skills/
 cp -r <repo>/skills/refresh-rules ~/.claude/skills/
+cp -r <repo>/skills/routing-status ~/.claude/skills/
 mkdir -p ~/.claude/hooks
 cp <repo>/hooks/token-report.sh ~/.claude/hooks/
 cp <repo>/hooks/route-gate.sh ~/.claude/hooks/
