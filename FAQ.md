@@ -2,9 +2,11 @@
 
 ### I installed the plugin but my existing chat isn't using it. Is it broken?
 
-No. Claude Code loads agent definitions and hook registrations once, when a session starts, and never reloads them mid-session. A chat that was already open when you installed (or reinstalled) Bullpen keeps running on whatever it had at its own start, forever, until you close it. Restart that chat: a brand-new session started after install gets everything automatically, no extra step needed.
+Depends which piece. The hook (`route-gate.sh`), yes: Claude Code registers `PreToolUse`/`Stop` hooks from `settings.json` once when a session starts and never reloads them mid-session, so a chat that was already open when you installed keeps running without it until you close it.
 
-`/refresh-rules` doesn't fix this either. It re-reads CLAUDE.md and the routing skill's text into an already-open chat, which works for behavioral rules, but it cannot add a new agent type or a new hook registration to a running session, that's not something any command can do from inside the chat, it's a harness-level limit.
+Agents are less absolute. Claude Code watches `~/.claude/agents/` and `.claude/agents/` directly and, per its own docs, picks up a new or edited file there within seconds, no restart, as long as that directory already existed before the session started. If you installed by copying files into `~/.claude/agents/` and that directory already had something in it, an already-open chat may well see `cheap`/`dev`/`hard`/`super` without a restart. If the directory was empty or didn't exist (a fresh setup), or if you installed via the plugin (a different, unverified-by-us mechanism), don't count on it, restart to be sure.
+
+`/refresh-rules` doesn't fix either case. It re-reads CLAUDE.md and the routing skill's text into an already-open chat, which works for behavioral rules, but it cannot add a new agent type or a new hook registration to a running session, that's not something any command can do from inside the chat, it's a harness-level limit.
 
 ### I appended CLAUDE.md.example but nothing changed.
 
@@ -17,6 +19,10 @@ It doesn't, on purpose. An earlier version forced one via a `Stop` hook. That wa
 ### `route-gate.sh` blocked or denied my agent call. Is that a bug?
 
 No, that's the hook working as designed. `general-purpose` with no `model` parameter gets denied until you name one; `Explore` with no `model` gets silently rewritten to run on haiku instead of being denied (both configurable, see the environment-variable question below). Either pass an explicit `model`, or use the named `cheap`/`dev`/`hard`/`super` agents, which already have their model pinned in frontmatter and pass through untouched.
+
+### What does route-gate.sh actually enforce, and what's still just advice?
+
+Three mechanical checks, no more: `Explore` or `general-purpose` must have a model named (one auto-routes to haiku, the other gets denied until you name one), and spawning the ask-tier (`super` by default) raises a confirmation dialog. That's the whole enforcement surface. Whether a task should go to `cheap`, `dev`, or `hard` in the first place, the route table in `skills/model-routing/SKILL.md`, is prose the model has to read and follow, the hook has no way to judge task-to-tier fit and doesn't try. `Plan` mode isn't gated at all (see the code comment in `route-gate.sh`, it falls into the same catch-all as any custom or future built-in agent type). If a tier agent's own pinned model gets silently swapped by `CLAUDE_CODE_SUBAGENT_MODEL`, the hook still logs it (see that question above), but it can't stop it, that resolution happens above the hook.
 
 ### Why does spawning `super` ask me to confirm every time?
 
@@ -50,6 +56,10 @@ Plugin install: `/plugin uninstall bullpen@bullpen`. Copy-into-config install: t
 
 Yes. The routing skill and `route-gate.sh` don't care what `subagent_type` you use, only that every `Agent`/`Task` call names a model. Write your own agent definitions and keep the enforcement hook as-is, then tell the hook about the new names, see the next question.
 
+### Can a name collision silently break a tier?
+
+Yes, if you installed via the plugin. Claude Code resolves same-named agents by scope priority: managed settings, then the `--agents` CLI flag, then your project's `.claude/agents/`, then your user-level `~/.claude/agents/`, and plugin agents last, lowest priority of all. If you (or another plugin) ever define your own agent named `dev`, `cheap`, `hard`, or `super` at the project or user level, it silently wins over Bullpen's, with no warning from anything, `route-gate.sh` included, since the hook only sees the winning `subagent_type` string, not which definition backed it. Renaming your own agent, or renaming Bullpen's tiers via the `ROUTE_GATE_*` variables from the previous question, are the two ways out.
+
 ### I renamed or added a tier. Do I need to change anything else?
 
 Yes, `route-gate.sh`. It doesn't infer tier names from your agent files, it reads them from environment variables (set in the `env` block of `~/.claude/settings.json`, or your shell profile):
@@ -64,9 +74,13 @@ ROUTE_GATE_DENY_AGENT="general-purpose"    # denied until a model is named
 
 Rename `super` to your own top tier's name without setting `ROUTE_GATE_ASK_AGENT` to match, and the confirmation dialog silently stops firing for it, the gate has no way to know a renamed agent was meant to inherit the old behavior. Adding a fourth tier agent (say a `research` tier) just means adding it to `ROUTE_GATE_TIER_AGENTS`, no script edit needed. Only set the variables that differ from the defaults above.
 
+### Does anything override a tier's pinned model even when route-gate.sh allows it?
+
+Yes: `CLAUDE_CODE_SUBAGENT_MODEL`, a Claude Code environment variable, not one of ours. If it's set, Claude Code resolves it before the per-invocation `model` parameter and before the subagent's own frontmatter, so it silently overrides even a tier agent's pinned model. `route-gate.sh` can't stop this, it isn't a decision the hook gets consulted on, but it does detect the variable and log `allow-tier-model-overridden` instead of a plain `allow-tier`, and records the actual overriding model in `route-gate.log` instead of pretending the frontmatter model ran. Check `/routing-status` if a tier's token cost looks wrong, this is the first thing to rule out. Setting the variable to `inherit` is a no-op as of Claude Code v2.1.196+, same as leaving it unset.
+
 ### Can I control how deeply a subagent thinks, not just which model it uses?
 
-No separate effort dial. Model choice is the real lever here; per-tier thinking depth (`cheap` answers fast, `super` deliberates at length) is simulated through each agent's prompt instructions, not an enforced parameter.
+Yes, since v2.1.198 or so, Claude Code subagents support an `effort` frontmatter field (`low`, `medium`, `high`, `xhigh`, `max`, availability depends on the model) that overrides the session's effort level. Each of the four tiers pins one: cheap=low, dev=high, hard=xhigh, super=max. This used to not exist, or at least this project didn't know about it, and the docs claimed thinking depth was "simulated through prompt instructions" only. That was wrong, or went stale; it's now a real, enforced parameter, and the prompt instructions in each agent's body reinforce it rather than stand in for it.
 
 ### The tier descriptions don't match my kind of work.
 

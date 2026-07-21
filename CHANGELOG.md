@@ -2,6 +2,21 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-21
+
+Fixes and corrections from an independent review, verified line by line against Claude Code's own docs before acting on any of it.
+
+### Added
+- `effort` frontmatter field on all four agents (cheap=low, dev=high, hard=xhigh, super=max). This is a real Claude Code subagent field that overrides the session effort level; the docs previously claimed no such field existed.
+- `route-gate.sh` detects `CLAUDE_CODE_SUBAGENT_MODEL` (a Claude Code environment variable that outranks per-invocation model params and agent frontmatter alike) and logs `allow-tier-model-overridden` plus the real overriding model, instead of a plain `allow-tier` that would misrepresent what actually ran.
+- FAQ entries: what route-gate.sh does and doesn't enforce (three mechanical checks, not the whole route table), the tier name collision risk from plugin agents' lowest scope priority, and the `CLAUDE_CODE_SUBAGENT_MODEL` sharp edge.
+- 3 new test cases covering the `CLAUDE_CODE_SUBAGENT_MODEL` behavior (19 total).
+
+### Fixed
+- SKILL.md and FAQ.md no longer claim subagents have no effort parameter.
+- INSTALL.md and FAQ.md no longer claim a blanket "nothing works without a restart." The hook always needs one; agents often don't, if `~/.claude/agents/` already existed before the session started, per Claude Code's own file-watching behavior. The plugin-install path's agent reload behavior is marked unverified rather than asserted either way.
+- README, `plugin.json`, and the GitHub repo description no longer read as "the hook enforces the routing," which overstates what three specific checks (Explore auto-route, general-purpose deny, super confirm) actually cover. The route table itself, which tier fits which task, stays advice in SKILL.md, same as it always has.
+
 ## [1.1.0] - 2026-07-21
 
 ### Added

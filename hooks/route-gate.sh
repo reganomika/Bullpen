@@ -20,6 +20,13 @@
 # Rename a tier without setting the matching variable and its special handling
 # (the ask dialog, in particular) silently stops firing for it, the gate has
 # no way to infer that a renamed agent was meant to inherit the old behavior.
+#
+# CLAUDE_CODE_SUBAGENT_MODEL, if set in the environment, outranks everything
+# this hook can see: it wins over the per-invocation model parameter AND the
+# tier agent's own frontmatter. A tier agent's "the frontmatter already pins
+# the model" assumption breaks silently when this is set, so the hook logs a
+# distinct decision (allow-tier-model-overridden) instead of pretending the
+# frontmatter model is what actually ran.
 
 # Kill switch, checked fresh on every run (each run is its own process).
 if [ -f "$HOME/.claude/hooks/route-gate.disabled" ]; then
@@ -51,6 +58,11 @@ AUTOROUTE_AGENT="${ROUTE_GATE_AUTOROUTE_AGENT:-Explore}"
 AUTOROUTE_MODEL="${ROUTE_GATE_AUTOROUTE_MODEL:-haiku}"
 DENY_AGENT="${ROUTE_GATE_DENY_AGENT:-general-purpose}"
 
+# "inherit" is a no-op as of Claude Code v2.1.196+: resolution just continues
+# to the next source, same as leaving the variable unset entirely.
+SUBAGENT_MODEL_OVERRIDE="${CLAUDE_CODE_SUBAGENT_MODEL:-}"
+[ "$SUBAGENT_MODEL_OVERRIDE" = "inherit" ] && SUBAGENT_MODEL_OVERRIDE=""
+
 # True if $1 appears as a whole entry in the comma-separated list $2.
 in_list() {
   case ",$2," in
@@ -67,8 +79,15 @@ log_line() { # $1 = decision
   if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5000 ]; then
     mv "$LOG" "$LOG.old" 2>/dev/null
   fi
+  # The override wins in reality regardless of what MODEL (the per-invocation
+  # parameter) says, so it takes priority in the log too: showing MODEL here
+  # when an override is active would log a model that didn't actually run.
+  local LOGGED_MODEL="${MODEL:-none}"
+  if [ -n "$SUBAGENT_MODEL_OVERRIDE" ]; then
+    LOGGED_MODEL="${SUBAGENT_MODEL_OVERRIDE} (env override)"
+  fi
   printf '%s\t%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" \
-    "${SESSION_ID:-unknown}" "$AGENT_TYPE" "${MODEL:-none}" "$1" >> "$LOG" 2>/dev/null
+    "${SESSION_ID:-unknown}" "$AGENT_TYPE" "$LOGGED_MODEL" "$1" >> "$LOG" 2>/dev/null
 }
 
 # Headless/automation escape: in bypassPermissions mode "ask" has nobody to
@@ -79,8 +98,13 @@ if [ "$PERM_MODE" = "bypassPermissions" ]; then
 fi
 
 if in_list "$AGENT_TYPE" "$TIER_AGENTS"; then
-  # Choosing a tier agent IS the conscious model choice; frontmatter pins it.
-  log_line "allow-tier"
+  # Choosing a tier agent IS the conscious model choice, frontmatter pins it,
+  # UNLESS an env override is silently substituting a different model.
+  if [ -n "$SUBAGENT_MODEL_OVERRIDE" ]; then
+    log_line "allow-tier-model-overridden"
+  else
+    log_line "allow-tier"
+  fi
   exit 0
 fi
 

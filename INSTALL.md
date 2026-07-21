@@ -1,6 +1,8 @@
 # Install
 
-**Any chat window already open before you install will not get the new agents or hook, full stop: not after `/reload-plugins`, not ever, until you close it and start a new one.** Claude Code loads agent definitions and hook registrations once when a session starts; there's no live reload for those two things. New chats opened after install work immediately. See [FAQ.md](FAQ.md) for more on this.
+**The hook needs a restart, no exceptions.** Claude Code registers `PreToolUse`/`Stop` hooks from `settings.json` once when a session starts. A chat already open when you install won't run `route-gate.sh` until you close it and start a new one, `/reload-plugins` doesn't help either.
+
+**Agents are more forgiving on the copy-into-config path, less certain on the plugin path.** Claude Code watches `~/.claude/agents/` and `.claude/agents/` directly and picks up new or edited files there within seconds, no restart, as long as that directory already existed when the session started (a brand-new `~/.claude/agents/` still needs a restart to be noticed at all the first time). Plugin-delivered agents load through a different mechanism; we haven't verified whether they get the same live pickup, so treat the plugin path as needing a restart too until proven otherwise. New chats opened after install always work immediately, either way. See [FAQ.md](FAQ.md) for more on this.
 
 ## As a plugin (recommended)
 
@@ -34,7 +36,7 @@ Add to `~/.claude/settings.json` (merge into your existing file):
 }
 ```
 
-Start a new session to pick up the agents, skills, and hook, chats already open when you do this stay on old behavior until restarted, no exceptions. Append `CLAUDE.md.example` to your own CLAUDE.md if you want it.
+Start a new session to pick up the hook, always, no exceptions. If `~/.claude/agents/` already had files in it before you ran this, Claude Code should notice the four new agent files within seconds in an already-open chat, per its own docs on watching that directory; if the directory didn't exist before, or if it doesn't show up, restart to be sure. Append `CLAUDE.md.example` to your own CLAUDE.md if you want it.
 
 ## Disable temporarily
 

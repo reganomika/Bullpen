@@ -15,7 +15,7 @@ Explicit user instruction (a specific model, a specific agent, a no-delegation r
 
 Four tiers from cheapest to most expensive model: `cheap` (cheapest), `dev` (balanced, same class as the main session), `hard` (powerful), `super` (frontier, the most expensive available). Keep the relative ordering as the load-bearing logic; check Anthropic's current pricing before trusting any specific numbers. `cheap` and haiku spawns have a smaller context window (200K vs 1M for the rest). The main-session default is the balanced tier at high effort, set once via `/model`; escalation goes through agents, not through switching the session model.
 
-Subagents have no real effort parameter; the desired depth is simulated by prompt instructions (cheap answers briefly, super deliberates exhaustively).
+Each tier pins its own `effort` in frontmatter, not just the model: cheap=low, dev=high, hard=xhigh, super=max. This is a real, enforced parameter (Claude Code overrides the session effort level with it), not simulated through prompt instructions alone; the prompt instructions in each agent's body reinforce it, they don't stand in for it.
 
 ## Ultracode is not a fifth tier
 

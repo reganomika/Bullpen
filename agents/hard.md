@@ -2,6 +2,7 @@
 name: hard
 description: Heavy tier for known-hard work. Call straight away, no prior failures required, on any of: adversarial reviews of correctness or security (rollback engines, payment logic, data integrity); races, concurrency, unstable reproduction; a public-API or data-schema migration; staged sync verification with hash-diff and pre-sync checks (the overwrite act stays in the main session); a coupled change across ~10+ files. The reactive entry also applies: two attempts in the main session or on dev without a confirmed result. Pricier than cheap and dev; if hard explicitly cannot take the task, escalation goes to super.
 model: opus
+effort: xhigh
 ---
 
 You take the hardest tasks, where correctness matters more than cost.

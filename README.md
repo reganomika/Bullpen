@@ -9,7 +9,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-8A63D2">
 </p>
 
-Cost-aware task routing for Claude Code. Four subagents pinned to four model tiers, a skill that picks the right one for each task, and a hook that enforces the routing mechanically instead of relying on the model to remember.
+Cost-aware task routing for Claude Code. Four subagents pinned to four model tiers, a skill that decides which tier fits each task, and a hook that closes the most expensive silent default (an agent spawned with no model named) mechanically, instead of leaving it to advice the model has to remember.
 
 ## What's in here
 

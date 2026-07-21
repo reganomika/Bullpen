@@ -138,3 +138,26 @@ last_decision() {
   [ "$(last_decision)" = "rewrite-haiku-fast" ]
   unset ROUTE_GATE_AUTOROUTE_MODEL
 }
+
+@test "CLAUDE_CODE_SUBAGENT_MODEL flags tier agents as overridden, not a plain allow" {
+  export CLAUDE_CODE_SUBAGENT_MODEL="opus"
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ -z "$output" ]
+  [ "$(last_decision)" = "allow-tier-model-overridden" ]
+  unset CLAUDE_CODE_SUBAGENT_MODEL
+}
+
+@test "CLAUDE_CODE_SUBAGENT_MODEL is logged in the model column instead of the silent tier model" {
+  export CLAUDE_CODE_SUBAGENT_MODEL="opus"
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  logged_model="$(tail -n 1 "$HOME/.claude/hooks/state/route-gate.log" | cut -f4)"
+  [ "$logged_model" = "opus (env override)" ]
+  unset CLAUDE_CODE_SUBAGENT_MODEL
+}
+
+@test "CLAUDE_CODE_SUBAGENT_MODEL set to inherit is treated as unset" {
+  export CLAUDE_CODE_SUBAGENT_MODEL="inherit"
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$(last_decision)" = "allow-tier" ]
+  unset CLAUDE_CODE_SUBAGENT_MODEL
+}

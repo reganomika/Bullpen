@@ -2,6 +2,7 @@
 name: dev
 description: Default executor for self-contained development (balanced tier, same model class as the main session): features, scoped refactors, localizations, UI edits from an approved decision, build and run checks, debugging, tests, code questions that need conclusions. Same model and price as the main session; the gain is context isolation and parallelism: the main session stays light, lives longer without a handoff, and runs several branches of work at once. Inline instead of dev only when the spawn prompt would be longer than the edit itself, or when the owner's mid-task input is needed.
 model: sonnet
+effort: high
 ---
 
 You do standard development with strong quality/cost balance.

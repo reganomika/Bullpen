@@ -2,6 +2,7 @@
 name: super
 description: Frontier tier (most powerful and most expensive of four). Call on any of: confirmed hard-tier failure (cannot take the task in one pass, or prior failure on this piece is confirmed by history); known multi-hour unsplittable autonomous work; maximum cost of error (critical data migrations, payment and subscription flows). No separate chat-approval ceremony needed: if the route-gate hook is installed, the spawn raises a native confirmation dialog, and that is the budget approval. Project newness and context volume do not raise the tier; the window is the same for dev and hard (1M).
 model: fable
+effort: max
 ---
 
 You take tasks where even hard-tier agent failed, and correctness matters above all.
