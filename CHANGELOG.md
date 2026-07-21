@@ -2,6 +2,22 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-07-22
+
+A third pass from the same reviewer, this time catching a real bug in 1.3.0's own fix. Verified against `code.claude.com/docs/en/hooks` and the provider-alias table in `model-config` before acting, same discipline as the last two rounds.
+
+### Fixed
+- **The jq-missing warning from 1.3.0 could fire zero times, ever, while still marking itself as warned.** It printed `{"decision":"block",...}` to stdout, but `decision` isn't a valid field for `PreToolUse` (that's `hookSpecificOutput.permissionDecision`), and on exit code 2 Claude Code ignores stdout entirely regardless of what's in it, valid or not, only stderr is read. Worse, before Claude Code v2.1.214, an invalid-schema block on exit 2 was treated as non-blocking and the spawn proceeded, meaning the one warning this feature exists to deliver could silently never reach the user, while the marker file already recorded it as delivered. Fixed: dropped the dead stdout JSON, kept stderr-only with exit 2, matching the same fix already made in HighWater for the same pattern.
+- The marker file didn't reset when jq came back. Install it after the warning fires, and a later regression (PATH change, broken symlink, disk full) would fail open silently forever with no second warning. It now clears the moment jq is found again.
+- If writing the marker file itself failed (read-only `$HOME`, full disk, bad permissions), the hook would block every subsequent spawn forever, exactly the opposite of the fail-open design everywhere else in this script. It now fails open instead when it can't record that it warned.
+- The warning message said "jq is not installed," which is often the wrong diagnosis: a hook subprocess doesn't necessarily see the same `PATH` as an interactive shell (GUI-launched apps commonly miss `/opt/homebrew/bin`), so jq can be installed and still invisible to the hook. Reworded to name the PATH problem and point at both possibilities.
+
+### Changed
+- FAQ's effort/model table now states plainly it's for the Anthropic API, and adds the actual per-provider alias resolution: on Microsoft Foundry, `hard` runs on Opus 4.6 and its `xhigh` clamps to `high`; on Amazon Bedrock or Google Cloud's Agent Platform, `dev` runs on Sonnet 4.5, which isn't in the effort table at all, making `dev`'s `effort: high` as much a no-op there as `cheap`'s is on Haiku everywhere.
+- FAQ now notes that `high` is already Sonnet 5/Opus 4.8's default effort, so on the Anthropic API only `hard`'s `xhigh` and `super`'s `max` actually push above what a tier would run at anyway; `dev`'s pin holds it steady regardless of session effort, it doesn't raise anything.
+
+2 new test cases (23 total): the marker resetting when jq reappears, and a touch failure on the marker failing open instead of blocking forever.
+
 ## [1.3.0] - 2026-07-21
 
 A second pass from the same reviewer on the 1.2.0 fixes, again verified against Claude Code's own docs (`model-config`) before acting.

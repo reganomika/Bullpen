@@ -82,15 +82,25 @@ Yes: `CLAUDE_CODE_SUBAGENT_MODEL`, a Claude Code environment variable, not one o
 
 Yes, real and enforced, not simulated through prompt instructions the way earlier versions of these docs claimed. Claude Code subagents support an `effort` frontmatter field that overrides the session's effort level, and each of the four tiers pins one: cheap=low, dev=high, hard=xhigh, super=max.
 
-Which levels a model actually supports varies, and using an unsupported one isn't an error, Claude Code silently clamps down to the highest level the model does support (`xhigh` runs as `high` on a model that tops out there, for instance):
+Which levels a model actually supports varies, and using an unsupported one isn't an error, Claude Code silently clamps down to the highest level the model does support (`xhigh` runs as `high` on a model that tops out there, for instance). The table below is for the **Anthropic API specifically**; the `sonnet`/`opus`/`fable` aliases each agent uses resolve to a different underlying model on other providers:
 
-| Model (tier that uses it)     | Supported levels                        |
-| :----------------------------- | :--------------------------------------- |
-| Fable 5 (`super`)              | `low`, `medium`, `high`, `xhigh`, `max`  |
-| Sonnet 5 (`dev`), Opus 4.8 (`hard`) | `low`, `medium`, `high`, `xhigh`, `max`  |
-| Haiku (`cheap`)                | Not listed as supporting effort at all   |
+| Provider                                      | `opus` resolves to | `sonnet` resolves to |
+| :--------------------------------------------- | :------------------ | :--------------------- |
+| Anthropic API                                   | Opus 4.8             | Sonnet 5                |
+| Claude Platform on AWS                          | Opus 4.8             | Sonnet 4.6               |
+| Amazon Bedrock, Google Cloud's Agent Platform   | Opus 4.8             | Sonnet 4.5               |
+| Microsoft Foundry                               | Opus 4.6             | Sonnet 4.5               |
 
-`hard`'s `xhigh` and `super`'s `max` are both genuinely supported by the models those tiers currently pin. `cheap`'s `effort: low` is very likely a no-op on Haiku, present for documentation and consistency, not because it changes anything, cheap gets its speed and cost from the model choice alone. If a tier's `model:` ever changes to something with a smaller effort range, its `effort:` value degrades gracefully to that model's ceiling rather than erroring.
+| Model                          | Supported effort levels                  |
+| :------------------------------ | :----------------------------------------- |
+| Fable 5 (`super`, all providers) | `low`, `medium`, `high`, `xhigh`, `max`   |
+| Sonnet 5, Opus 4.8 (Anthropic API's `dev`, `hard`) | `low`, `medium`, `high`, `xhigh`, `max` |
+| Opus 4.6, Sonnet 4.6            | `low`, `medium`, `high`, `max` (no `xhigh`) |
+| Sonnet 4.5, Haiku                | Not in Claude Code's effort-support table at all |
+
+On the Anthropic API, `hard`'s `xhigh` and `super`'s `max` are both genuinely supported by the models those tiers pin there. On Microsoft Foundry, `hard` runs on Opus 4.6, so its `xhigh` silently clamps to `high`, the exact example the official docs use to illustrate the clamp. On Amazon Bedrock or Google Cloud's Agent Platform, `dev` runs on Sonnet 4.5, which isn't in the effort table at all, so `dev`'s `effort: high` is as much a no-op there as `cheap`'s is on Haiku everywhere. `cheap`'s `effort: low` is very likely a no-op on Haiku on every provider, present for documentation and consistency, not because it changes anything, cheap gets its speed and cost from the model choice alone.
+
+One more nuance worth knowing even on the Anthropic API: `high` is already the *default* effort on Sonnet 5 and Opus 4.8. So of the four pins, only `hard`'s `xhigh` and `super`'s `max` actually push a tier above what it would run at anyway. `dev`'s `effort: high` doesn't raise anything, it pins dev to the default regardless of what the session's own effort happens to be set to, useful if you run your main session at `low` or `max` and still want dev to hold steady, but it isn't "doing more" the way the other two are.
 
 ### Does `effort` control extended thinking too?
 

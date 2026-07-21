@@ -171,17 +171,43 @@ run_hook_no_jq() {
   printf '%s' "$1" | PATH="$emptybin" "$HOOK"
 }
 
-@test "missing jq blocks once with a hand-written warning, no jq needed to produce it" {
+@test "missing jq blocks once with a warning on stderr, nothing meaningful on stdout" {
   run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
   [ "$status" -eq 2 ]
-  echo "$output" | grep -q '"decision":"block"'
-  echo "$output" | grep -qi "jq is not installed"
+  # Exit 2 means Claude Code ignores stdout entirely; nothing should be
+  # printed there, the reason has to live on stderr, which bats merges into
+  # $output by default, this just confirms no stray JSON got left on stdout.
+  ! echo "$output" | grep -q '"decision"'
+  echo "$output" | grep -qi "not found on this hook process's PATH"
   [ -f "$HOME/.claude/hooks/state/route-gate.jq-missing-warned" ]
 }
 
 @test "missing jq fails open silently after the first warning" {
   run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
   run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the warned marker clears once jq is found again, so a later gap re-warns" {
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ -f "$HOME/.claude/hooks/state/route-gate.jq-missing-warned" ]
+
+  run run_hook '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ ! -f "$HOME/.claude/hooks/state/route-gate.jq-missing-warned" ]
+
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+}
+
+@test "a touch failure on the marker fails open instead of blocking forever" {
+  mkdir -p "$HOME/.claude/hooks/state"
+  touch "$HOME/.claude/hooks/route-gate.jq-missing-warned-placeholder"
+  # Make the state dir read-only so touch on the marker fails; the hook must
+  # not turn that into an unkillable block loop.
+  chmod 555 "$HOME/.claude/hooks/state"
+  run run_hook_no_jq '{"tool_input":{"subagent_type":"cheap"},"session_id":"s1"}'
+  chmod 755 "$HOME/.claude/hooks/state"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

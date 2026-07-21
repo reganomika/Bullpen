@@ -42,17 +42,29 @@ fi
 # No jq: fail open rather than break every Agent call, same as any other
 # fail-open branch below. But this one is different in kind, not degree: it
 # disables the entire hook, silently, for every future spawn, not just this
-# one. Warn once (a hand-written JSON block, since jq itself is what's
-# missing) so it surfaces instead of vanishing. After the marker exists,
-# back to silent fail-open, so this never nags on every single spawn.
-if ! command -v jq >/dev/null 2>&1; then
-  JQ_WARNED="$HOME/.claude/hooks/state/route-gate.jq-missing-warned"
+# one. Warn once so it surfaces instead of vanishing, then go back to silent
+# fail-open so this never nags on every single spawn. jq missing today does
+# not mean jq missing forever (PATH changes, a broken install gets fixed),
+# so the marker resets the moment jq is found again, not just the first time.
+JQ_WARNED="$HOME/.claude/hooks/state/route-gate.jq-missing-warned"
+if command -v jq >/dev/null 2>&1; then
+  rm -f "$JQ_WARNED" 2>/dev/null
+else
   if [ ! -f "$JQ_WARNED" ]; then
     mkdir -p "$HOME/.claude/hooks/state" 2>/dev/null
-    touch "$JQ_WARNED" 2>/dev/null
-    REASON='Route gate: jq is not installed, so route-gate.sh cannot read this Agent/Task call and every routing decision has been silently failing open, no enforcement at all, since the moment this stopped being true. Install it (macOS: brew install jq) then re-issue this call. This is a one-time warning; after this, a missing jq goes back to failing open silently, by design, so it does not block every spawn forever over one missing dependency.'
-    printf '{"decision":"block","reason":"%s"}\n' "$REASON"
-    printf '%s\n' "$REASON" >&2
+    # Can't record that we warned: fail open rather than block every future
+    # spawn forever on a read-only $HOME or a full disk. A missed warning
+    # this once beats an unkillable block loop, that would be the opposite
+    # of this whole script's fail-open philosophy.
+    touch "$JQ_WARNED" 2>/dev/null || exit 0
+    # PreToolUse hooks don't use the top-level decision field, that's for
+    # UserPromptSubmit/PostToolUse/Stop/SubagentStop/PreCompact; PreToolUse
+    # uses hookSpecificOutput.permissionDecision instead, and jq (unavailable
+    # right now) is what builds that JSON in every other branch of this
+    # script. On exit 2, Claude Code ignores stdout entirely regardless of
+    # what's in it, valid JSON or not, so there is nothing useful to print
+    # there anyway: stderr text is what actually reaches the model.
+    printf 'Route gate: jq was not found on this hook process'\''s PATH, so route-gate.sh cannot read this Agent/Task call, and every routing decision has been failing open silently, no enforcement at all, since PATH stopped including it. If jq is genuinely not installed: macOS, brew install jq. If it is installed, this is more likely a PATH problem: GUI-launched apps often do not source your shell profile and miss things like /opt/homebrew/bin, check where jq actually lives (which jq in a terminal) against what this hook process can see. This warning fires once per gap; it goes silent again after this until jq goes missing again.\n' >&2
     exit 2
   fi
   exit 0
