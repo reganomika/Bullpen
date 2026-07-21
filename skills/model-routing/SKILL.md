@@ -17,6 +17,10 @@ Four tiers from cheapest to most expensive model: `cheap` (cheapest), `dev` (bal
 
 Subagents have no real effort parameter; the desired depth is simulated by prompt instructions (cheap answers briefly, super deliberates exhaustively).
 
+## Ultracode is not a fifth tier
+
+Ultracode (Workflow, multi-agent orchestration) is the most expensive mode in the system: it runs several agents in parallel on one task. Turning it on everywhere multiplies spend without picking a better tier for anything, it sits outside the four-tier model above. Keep it off by default. Enable it only on an explicit user request for that specific task in chat, never automatically because a task looks hard.
+
 ## The iron rule: a model on every spawn
 
 Every Agent/Task call has a model parameter: haiku, sonnet, opus, fable, inherit. The built-in Explore and general-purpose agents silently inherit the main session's model without it, which means they cost as much as dev. That is a routing miss, not a neutral default. Write inherit only deliberately, and name the reason in one line. The named agents cheap/dev/hard/super pin their model in frontmatter; call them by name with no parameter.
@@ -27,7 +31,7 @@ If the route-gate hook is installed (PreToolUse on Agent/Task, see README): Expl
 
 - Search and recon: "where is X defined", grep sweeps, hash-diffs, file-list gathering, single-field lookups: Explore or general-purpose with model: haiku. Sonnet for recon only when synthesis across several subsystems is needed, and that need is named in the spawn prompt.
 - Fully specified mechanics: bulk renames and word-form replacements, repository and .gitignore cleanups, deleting files strictly by explicitly named paths, boilerplate, uniform markdown and doc edits, translations against a ready glossary, long templated output, commit formatting from a ready diff: cheap. Batch same-shaped small items into one spawn as a list.
-- Self-contained implementation: features, scoped refactors, localizations, UI edits from an approved decision, build and run checks, debugging and tests, code questions that need conclusions rather than raw findings: dev. This is the default executor for code. The gain is not price (same model), it is context isolation and parallelism: the main session stays light and lives longer without a handoff.
+- Self-contained implementation: features, scoped refactors, localizations, UI edits from an approved decision, build and run checks, debugging and tests, code questions that need conclusions rather than raw findings: dev. This is the default executor for code. The gain is not price (same model), it is context isolation and parallelism: the main session stays light and lives longer without a handoff. Delegate too when a task needs many back-and-forth steps, not just large output: an investigation, comparison, or diagnosis with dozens of small round trips bloats the history that gets reread every turn, even if no single step is big.
 - Known-hard work: straight to hard, no prior failures required, on any of: adversarial reviews of correctness or security; races, concurrency, unstable reproduction; a public-API or data-schema migration; staged sync verification with hash-diff and pre-sync checks (the overwrite act itself stays in the main session); a coupled change across ~10+ files. The reactive entry also applies: two attempts in the main session or on dev without a confirmed result.
 - super: confirmed hard-tier failure; known multi-hour unsplittable autonomous work; maximum cost of error (critical data migrations, payment and subscription flows). No separate chat-approval ceremony: the hook raises the confirmation dialog, and that is the budget approval. High stakes raise the strictness of result verification, not the tier.
 - On any escalation, pass everything the lower tier learned upward: diagnosis, repro steps, affected files, tested and rejected hypotheses. Otherwise the expensive model re-pays for finished reconnaissance.
@@ -53,6 +57,12 @@ Nothing applies: route by the table. An unresolved fork in the task: ask the own
 ## Wide search: fan-out
 
 Haiku's 200K context is not a ban on wide search, it is an instruction to split. N parallel haiku spawns by directory or subsystem, each returning a compact report, the main session merges. A single full-walk spawn only when the exact paths are known in advance.
+
+## Fan-out for independent chunks
+
+A task that splits into several independent chunks (the same operation across N files, screens, or questions, no chunk depends on another's result): spawn every Agent call in one message, in parallel, not one at a time and not through a single sequential agent doing everything. Pick the tier per chunk, not one tier for the whole batch: a simple chunk to cheap, a harder one to dev, a known-hard one straight to hard. This is an ordinary parallel Agent call, not Workflow/ultracode: no orchestration, no separate user approval, the same mode as a single spawn, just several at once.
+
+Chunks are not independent if the next one depends on the previous result or needs a check between stages. That's a pipeline, not a fan-out: do it sequentially yourself. If the whole task is made of dependent multi-stage steps like that and is genuinely large, that's a scenario for Workflow (ultracode), but it only turns on by explicit user request in chat, never automatically from the shape of the task alone.
 
 ## Overhead: the single rule
 

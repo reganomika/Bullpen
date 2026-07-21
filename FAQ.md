@@ -2,17 +2,17 @@
 
 ### I installed the plugin but my existing chat isn't using it. Is it broken?
 
-No. Claude Code loads agent definitions and hook registrations once, when a session starts, and never reloads them mid-session. A chat that was already open when you installed (or reinstalled) Bullpen keeps running on whatever it had at its own start, forever, until you close it. Restart that chat — a brand-new session started after install gets everything automatically, no extra step needed.
+No. Claude Code loads agent definitions and hook registrations once, when a session starts, and never reloads them mid-session. A chat that was already open when you installed (or reinstalled) Bullpen keeps running on whatever it had at its own start, forever, until you close it. Restart that chat: a brand-new session started after install gets everything automatically, no extra step needed.
 
-`/refresh-rules` doesn't fix this either. It re-reads CLAUDE.md and the routing skill's text into an already-open chat, which works for behavioral rules, but it cannot add a new agent type or a new hook registration to a running session — that's not something any command can do from inside the chat, it's a harness-level limit.
+`/refresh-rules` doesn't fix this either. It re-reads CLAUDE.md and the routing skill's text into an already-open chat, which works for behavioral rules, but it cannot add a new agent type or a new hook registration to a running session, that's not something any command can do from inside the chat, it's a harness-level limit.
 
 ### I appended CLAUDE.md.example but nothing changed.
 
-`CLAUDE.md.example` never installs itself — not via the plugin, not on restart, not automatically under any circumstance. The plugin system deliberately doesn't load CLAUDE.md files. You have to open it and copy its contents into your own `~/.claude/CLAUDE.md` by hand, every time you want to pick up a change to it.
+`CLAUDE.md.example` never installs itself: not via the plugin, not on restart, not automatically under any circumstance. The plugin system deliberately doesn't load CLAUDE.md files. You have to open it and copy its contents into your own `~/.claude/CLAUDE.md` by hand, every time you want to pick up a change to it.
 
 ### Why doesn't a token report show up after every reply anymore?
 
-It doesn't, on purpose. An earlier version forced one via a `Stop` hook. That was removed because it hit a habit-driven duplicate-line bug that a text-only fix in CLAUDE.md couldn't reliably prevent — the model kept writing a report line out of habit before the hook actually fired, then the hook fired for real and forced a second one. Ask for numbers instead: `/usage-report` for a quick token/model total, `/routing-status` for that plus the routing table.
+It doesn't, on purpose. An earlier version forced one via a `Stop` hook. That was removed because it hit a habit-driven duplicate-line bug that a text-only fix in CLAUDE.md couldn't reliably prevent: the model kept writing a report line out of habit before the hook actually fired, then the hook fired for real and forced a second one. Ask for numbers instead: `/usage-report` for a quick token/model total, `/routing-status` for that plus the routing table.
 
 ### `route-gate.sh` blocked or denied my agent call. Is that a bug?
 
@@ -24,7 +24,7 @@ That's the point of the tier. `super` is the most expensive model available, so 
 
 ### Does any of this send my data anywhere?
 
-No. Every hook here is a local shell script that reads your own session transcript file on disk and writes small state files under `~/.claude/hooks/state/`. Nothing here makes a network call. Don't take that on faith — the scripts are short, read them yourself before trusting the claim.
+No. Every hook here is a local shell script that reads your own session transcript file on disk and writes small state files under `~/.claude/hooks/state/`. Nothing here makes a network call. Don't take that on faith: the scripts are short, read them yourself before trusting the claim.
 
 ### The model names and prices in `SKILL.md` look wrong or outdated.
 
@@ -34,9 +34,17 @@ They will drift over time; this repo won't always get updated the same day prici
 
 No. Agents, skills, and hooks are Claude Code–specific concepts (the CLI and desktop app). None of it applies to claude.ai or direct API usage.
 
-### How do I turn a hook off without uninstalling anything?
+### Should I turn on Ultracode/Workflow orchestration everywhere for better quality?
 
-`touch ~/.claude/hooks/route-gate.disabled` or `touch ~/.claude/hooks/context-check.disabled`. Instant, no restart needed — each hook checks for its own flag file fresh on every run. Delete the file to turn it back on.
+No, it's the most expensive mode available, not a quality dial. It runs several agents in parallel on one task, which multiplies token spend without making the model doing the actual work any better; model choice and the routing skill already cover quality. Leave it off by default and turn it on per task, only when you specifically want multi-agent orchestration for that piece of work.
+
+### How do I turn the hook off without uninstalling anything?
+
+`touch ~/.claude/hooks/route-gate.disabled`. Instant, no restart needed: the hook checks for this flag file fresh on every run. Delete the file to turn it back on.
+
+### How do I uninstall this completely?
+
+Plugin install: `/plugin uninstall bullpen@bullpen`. Copy-into-config install: there's no tracking of what got copied, so remove the agent, skill, and hook files by hand, plus the CLAUDE.md sections if you appended `CLAUDE.md.example`. Exact commands: [INSTALL.md](INSTALL.md#uninstall). Either way, chats already open when you uninstall keep running with everything still loaded until you close them, same one-way restart rule as install.
 
 ### Can I swap in my own agents instead of cheap/dev/hard/super?
 
@@ -48,4 +56,4 @@ No separate effort dial. Model choice is the real lever here; per-tier thinking 
 
 ### The tier descriptions don't match my kind of work.
 
-They reflect a software-development-heavy workflow with some writing and document tasks mixed in. Edit `skills/model-routing/SKILL.md` directly — the route table and worked examples are meant to be adjusted to your own task mix, not treated as fixed.
+They reflect a software-development-heavy workflow with some writing and document tasks mixed in. Edit `skills/model-routing/SKILL.md` directly: the route table and worked examples are meant to be adjusted to your own task mix, not treated as fixed.
