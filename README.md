@@ -2,6 +2,13 @@
   <img src="assets/logo.svg" alt="Bullpen" width="460">
 </p>
 
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://github.com/reganomika/Bullpen/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/reganomika/Bullpen?style=flat"></a>
+  <a href="https://github.com/reganomika/Bullpen/actions/workflows/shellcheck.yml"><img alt="Shellcheck" src="https://github.com/reganomika/Bullpen/actions/workflows/shellcheck.yml/badge.svg"></a>
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-8A63D2">
+</p>
+
 Cost-aware task routing for Claude Code. Four subagents pinned to four model tiers, a skill that picks the right one for each task, and a hook that enforces the routing mechanically instead of relying on the model to remember.
 
 ## What's in here

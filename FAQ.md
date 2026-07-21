@@ -16,7 +16,7 @@ It doesn't, on purpose. An earlier version forced one via a `Stop` hook. That wa
 
 ### `route-gate.sh` blocked or denied my agent call. Is that a bug?
 
-No, that's the hook working as designed. `general-purpose` with no `model` parameter gets denied until you name one; `Explore` with no `model` gets silently rewritten to run on haiku instead of being denied. Either pass an explicit `model`, or use the named `cheap`/`dev`/`hard`/`super` agents, which already have their model pinned in frontmatter and pass through untouched.
+No, that's the hook working as designed. `general-purpose` with no `model` parameter gets denied until you name one; `Explore` with no `model` gets silently rewritten to run on haiku instead of being denied (both configurable, see the environment-variable question below). Either pass an explicit `model`, or use the named `cheap`/`dev`/`hard`/`super` agents, which already have their model pinned in frontmatter and pass through untouched.
 
 ### Why does spawning `super` ask me to confirm every time?
 
@@ -48,7 +48,21 @@ Plugin install: `/plugin uninstall bullpen@bullpen`. Copy-into-config install: t
 
 ### Can I swap in my own agents instead of cheap/dev/hard/super?
 
-Yes. The routing skill and `route-gate.sh` don't care what `subagent_type` you use, only that every `Agent`/`Task` call names a model. Write your own agent definitions and keep the enforcement hook as-is.
+Yes. The routing skill and `route-gate.sh` don't care what `subagent_type` you use, only that every `Agent`/`Task` call names a model. Write your own agent definitions and keep the enforcement hook as-is, then tell the hook about the new names, see the next question.
+
+### I renamed or added a tier. Do I need to change anything else?
+
+Yes, `route-gate.sh`. It doesn't infer tier names from your agent files, it reads them from environment variables (set in the `env` block of `~/.claude/settings.json`, or your shell profile):
+
+```bash
+ROUTE_GATE_TIER_AGENTS="cheap,dev,hard"    # pass through untouched, comma-separated
+ROUTE_GATE_ASK_AGENT="super"               # gets the native confirmation dialog
+ROUTE_GATE_AUTOROUTE_AGENT="Explore"       # auto-routed to a cheap model when no model is set
+ROUTE_GATE_AUTOROUTE_MODEL="haiku"         # the model it's routed to
+ROUTE_GATE_DENY_AGENT="general-purpose"    # denied until a model is named
+```
+
+Rename `super` to your own top tier's name without setting `ROUTE_GATE_ASK_AGENT` to match, and the confirmation dialog silently stops firing for it, the gate has no way to know a renamed agent was meant to inherit the old behavior. Adding a fourth tier agent (say a `research` tier) just means adding it to `ROUTE_GATE_TIER_AGENTS`, no script edit needed. Only set the variables that differ from the defaults above.
 
 ### Can I control how deeply a subagent thinks, not just which model it uses?
 

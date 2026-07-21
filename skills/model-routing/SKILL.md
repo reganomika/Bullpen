@@ -36,6 +36,17 @@ If the route-gate hook is installed (PreToolUse on Agent/Task, see README): Expl
 - super: confirmed hard-tier failure; known multi-hour unsplittable autonomous work; maximum cost of error (critical data migrations, payment and subscription flows). No separate chat-approval ceremony: the hook raises the confirmation dialog, and that is the budget approval. High stakes raise the strictness of result verification, not the tier.
 - On any escalation, pass everything the lower tier learned upward: diagnosis, repro steps, affected files, tested and rejected hypotheses. Otherwise the expensive model re-pays for finished reconnaissance.
 
+## Adapting the route table to non-dev work
+
+The table above is software-dev-heavy on purpose, that's the workflow this repo grew out of. The underlying logic (cheap for fully specified mechanics, dev for self-contained judgment calls, hard for known-hard or high-stakes work, super for confirmed hard-tier failure or maximum cost of error) carries over to any task type. A content/writing-workflow rewrite of the same table:
+
+- Fully specified mechanics: reformatting, citation styling, transcript cleanup, translation against a fixed glossary, boilerplate outline generation: cheap.
+- Self-contained drafting: a piece from an approved outline, an edit pass matching an established voice, integrating research from sources already provided: dev.
+- Known-hard: reconciling contradictory sources, original argumentation that needs to hold up to scrutiny, fact-checking against primary sources: hard.
+- super: a piece where being wrong carries real legal, financial, or reputational cost.
+
+Edit the route table itself for your own task mix rather than keeping two tables in sync, this example exists to show the pattern, not to be maintained alongside the real one.
+
 ## Inline is the exception, with a named reason
 
 A subagent is autonomous: it cannot see the conversation or ask questions. That is solved by prompt completeness, not by refusing to delegate. Work in the main session only when one of these applies:
